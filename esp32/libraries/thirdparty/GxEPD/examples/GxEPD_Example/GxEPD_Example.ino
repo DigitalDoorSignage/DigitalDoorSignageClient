@@ -1,3 +1,4 @@
+#define ESP32
 // GxEPD_Example : test example for e-Paper displays from Waveshare and from Dalian Good Display Inc.
 //
 // Created by Jean-Marc Zingg based on demo code from Good Display,
@@ -45,7 +46,7 @@
 //#include <GxGDEW029Z10/GxGDEW029Z10.h>    // 2.9" b/w/r
 //#include <GxGDEW027C44/GxGDEW027C44.h>    // 2.7" b/w/r
 //#include <GxGDEW027W3/GxGDEW027W3.h>      // 2.7" b/w
-//#include <GxGDEW042T2/GxGDEW042T2.h>      // 4.2" b/w
+#include <GxGDEW042T2/GxGDEW042T2.h>      // 4.2" b/w
 //#include <GxGDEW042Z15/GxGDEW042Z15.h>    // 4.2" b/w/r
 //#include <GxGDEW0583T7/GxGDEW0583T7.h>    // 5.83" b/w
 //#include <GxGDEW075T8/GxGDEW075T8.h>      // 7.5" b/w

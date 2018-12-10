@@ -6,6 +6,7 @@
 #include <MqttClient.h>
 #include <GxEPD.h>
 #include <GxGDEW042T2/GxGDEW042T2.h>
+//#include <GxGDEW042Z15/GxGDEW042Z15.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeMonoBold12pt7b.h>
 #include <Fonts/FreeMonoBold18pt7b.h>
@@ -21,7 +22,6 @@ char topic[5] = "test";
 static void callback(const char* topic, const char* payload){
 	Serial.printf("%s: %s\n", topic, payload);
 	display.fillScreen(GxEPD_WHITE);
-	display.update();
 	display.setTextColor(GxEPD_BLACK);
 	display.setFont(&FreeMonoBold9pt7b);
 	display.setCursor(5, 5);
@@ -31,6 +31,7 @@ static void callback(const char* topic, const char* payload){
 
 void setup() {
 	Serial.begin(115200);                 //Initialisierung der seriellen Schnittstelle
+	display.init(115200);
 	Serial.println();
 	Serial.println();
 	Serial.println(F("*BA BaseApp"));
@@ -42,6 +43,9 @@ void setup() {
 	sub.subscriberCallback = callback;
 	MqttClient.addSubscription(&sub);
 	MqttClient.subscribeToBroker();
+	display.fillScreen(GxEPD_WHITE);
+	display.update();
+	Serial.printf("%d\n", display.getWriteError());
 }
 
 void loop() {

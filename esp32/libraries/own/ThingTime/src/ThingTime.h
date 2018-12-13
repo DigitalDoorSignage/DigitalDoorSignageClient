@@ -3,7 +3,7 @@
 
 #define NTP_PACKET_SIZE 48  // NTP time is in the first 48 bytes of message
 
-#include <arduino.h>
+#include <Arduino.h>
 #include <IPAddress.h>
 
 class ThingTimeClass

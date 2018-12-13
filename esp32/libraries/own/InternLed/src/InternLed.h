@@ -1,6 +1,6 @@
 #pragma once
 
-#include <arduino.h>
+#include <Arduino.h>
 #include <Ticker.h>
 
 /* Die interne LED am ESP8266 kann für verschiedene Zwecke angesprochen werden

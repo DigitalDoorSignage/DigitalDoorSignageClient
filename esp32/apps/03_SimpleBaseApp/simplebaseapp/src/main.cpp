@@ -135,5 +135,5 @@ void setup() {
 void loop() {
 	HttpServer.handleClient();
 	MqttClient.doLoop();
-	delay(1);
+	//delay(1);
 }

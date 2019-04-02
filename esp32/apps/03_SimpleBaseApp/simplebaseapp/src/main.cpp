@@ -13,9 +13,8 @@
 #include <GxIO/GxIO_SPI/GxIO_SPI.h>
 #include <GxIO/GxIO.h>
 
-
-GxIO_Class io(SPI, /*CS=5*/ SS, /*DC=*/ 17, /*RST=*/ 16); // arbitrary selection of 17, 16
-GxEPD_Class display(io, /*RST=*/ 16, /*BUSY=*/ 4); // arbitrary selection of (16), 4
+GxIO_Class io(SPI, /*CS=5*/ SS, /*DC=*/17, /*RST=*/16); // arbitrary selection of 17, 16
+GxEPD_Class display(io, /*RST=*/16, /*BUSY=*/4);		// arbitrary selection of (16), 4
 MqttSubscription sub = MqttSubscription();
 std::string room;
 std::string teacher;
@@ -23,25 +22,30 @@ std::string subject;
 std::string klass;
 char topic[30] = "room/";
 
-int calculateWidthOfText(std::string text){
+int calculateWidthOfText(std::string text)
+{
 	return text.length() * 21 - 3;
 }
 
-int calculateCenteredXOfText(std::string text, int width){
-	return (width - calculateWidthOfText(text))/2;
+int calculateCenteredXOfText(std::string text, int width)
+{
+	return (width - calculateWidthOfText(text)) / 2;
 }
 
-static void writeLessonToDisplay(std::string newClass, std::string newTeacher, std::string newSubject){
+static void writeLessonToDisplay(std::string newClass, std::string newTeacher, std::string newSubject)
+{
 	int x, y = 0;
 	boolean classChanged = klass.compare(newClass) != 0;
 	boolean teacherChanged = teacher.compare(newTeacher) != 0;
 	boolean subjectChanged = subject.compare(newSubject) != 0;
 
-	if(classChanged || teacherChanged || subjectChanged){
+	if (classChanged || teacherChanged || subjectChanged)
+	{
 		display.fillScreen(GxEPD_WHITE);
 	}
 	// top left text
-	if(classChanged){
+	if (classChanged)
+	{
 		x = 5 + calculateCenteredXOfText(newClass, 240);
 		y = 63;
 		display.setCursor(x, y);
@@ -49,7 +53,8 @@ static void writeLessonToDisplay(std::string newClass, std::string newTeacher, s
 		display.updateWindow(8, 6, 230, 95, false);
 	}
 	// middle text
-	if(teacherChanged){
+	if (teacherChanged)
+	{
 		x = 5 + calculateCenteredXOfText(newTeacher, 390);
 		y = 160;
 		display.setCursor(x, y);
@@ -57,7 +62,8 @@ static void writeLessonToDisplay(std::string newClass, std::string newTeacher, s
 		display.updateWindow(8, 102, 385, 95, false);
 	}
 	// bottom text
-	if(subjectChanged){
+	if (subjectChanged)
+	{
 		x = 5 + calculateCenteredXOfText(newSubject, 390);
 		y = 257;
 		display.setCursor(x, y);
@@ -66,9 +72,10 @@ static void writeLessonToDisplay(std::string newClass, std::string newTeacher, s
 	}
 }
 
-static void callback(const char* topic, const char* payload){
+static void callback(const char *topic, const char *payload)
+{
 	DynamicJsonBuffer jsonBuffer;
-	JsonObject& root = jsonBuffer.parseObject(payload);
+	JsonObject &root = jsonBuffer.parseObject(payload);
 	std::string newTeacher = root["teacher"].as<String>().c_str();
 	std::string newClass = root["class"].as<String>().c_str();
 	std::string newSubject = root["subject"].as<String>().c_str();
@@ -78,8 +85,10 @@ static void callback(const char* topic, const char* payload){
 	subject = newSubject;
 }
 
-static void handleRoomRequest(){
-	if(HttpServer.args() == 1){
+static void handleRoomRequest()
+{
+	if (HttpServer.args() == 1)
+	{
 		room = HttpServer.arg(0).c_str();
 		ThingConfig.setValue("room", room.c_str());
 	}
@@ -87,8 +96,8 @@ static void handleRoomRequest(){
 	HttpServer.send(200, "text/plain", room.c_str());
 }
 
-
-void writeStaticDataToDisplay(){
+void writeStaticDataToDisplay()
+{
 	// top left
 	display.drawRect(5, 5, 240, 97, GxEPD_BLACK);
 	// top right
@@ -103,7 +112,8 @@ void writeStaticDataToDisplay(){
 	display.updateWindow(0, 0, GxEPD_WIDTH, GxEPD_HEIGHT, false);
 }
 
-void setupDisplay(){
+void setupDisplay()
+{
 	display.init(115200);
 	display.setFont(&FreeMonoBold18pt7b);
 	display.setTextColor(GxEPD_BLACK);
@@ -111,7 +121,8 @@ void setupDisplay(){
 	display.update();
 }
 
-void setupMqtt(){
+void setupMqtt()
+{
 	MqttClient.init("/");
 	room = ThingConfig.getValue("room");
 	strcat(topic, room.c_str());
@@ -121,18 +132,20 @@ void setupMqtt(){
 	MqttClient.subscribeToBroker();
 }
 
-void setup() {
-	Serial.begin(115200);                 //Initialisierung der seriellen Schnittstelle
+void setup()
+{
+	Serial.begin(115200); //Initialisierung der seriellen Schnittstelle
 	ThingConfig.readConfig();
 	HttpServer.init();
 	HttpServer.on("/room", handleRoomRequest);
-	room = "E230";
+	room = ThingConfig.getValue("room");
 	setupMqtt();
 	setupDisplay();
 	writeStaticDataToDisplay();
 }
 
-void loop() {
+void loop()
+{
 	HttpServer.handleClient();
 	MqttClient.doLoop();
 	//delay(1);

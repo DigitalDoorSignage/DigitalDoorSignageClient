@@ -110,6 +110,7 @@ void writeStaticDataToDisplay()
 	display.setCursor(245 + calculateCenteredXOfText(room, 151), 63);
 	display.print(room.c_str());
 	display.updateWindow(0, 0, GxEPD_WIDTH, GxEPD_HEIGHT, false);
+	writeLessonToDisplay("-", "-", "-");
 }
 
 void setupDisplay()

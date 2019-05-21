@@ -1,38 +1,33 @@
 #pragma once
+// https://platformio.org/lib/show/5632/DHT22%20lib%20for%20esp-idf/installation
+/* 
 
-#include <Arduino.h>
-#include <Ticker.h>
+	DHT22 temperature sensor driver
 
+*/
+#include "driver/gpio.h"
+
+#define DHT_OK 0
+#define DHT_CHECKSUM_ERROR -1
+#define DHT_TIMEOUT_ERROR -2
 
 class Dht22
 {
   public:
-    Dht22( uint8_t pin);
-    float getTemperature();
-    float getHumidity();
-    uint8_t getLastErrorCode();
-    uint8_t getLastErrorPosition();
-    long getSecondsFromLastError();
-    long getSecondsFromLastCorrectMeasurement();
+	Dht22();
 
-    void processEvent();
-    void notifyChangingEdge();
+	gpio_num_t _pin;
 
+	void init(gpio_num_t gpio);
+	void errorHandler(int response);
+	int readDht();
+	float getHumidity();
+	float getTemperature();
 
   private:
-    #define TIMESTAMPS 100  // Zuerst eine Startsequenz und dann 80 Bits
-    unsigned long _changingEdgeMicroSeconds[TIMESTAMPS];
-    volatile uint8_t _changingEdgeIndex=0;
+	float _humidity = 0.;
+	float _temperature = 0.;
 
-    unsigned long _lastCorrectMeasurementMilliSeconds=0;
-    unsigned long _lastErrorMilliSeconds=0;
-    uint8_t _lastErrorCode=0;
-    uint8_t _lastErrorPos=0;
-    uint8_t _state;
-    uint8_t _pin;
-    Ticker _ticker;
-    float _temperature;
-    float _humidity;
 
+	int getSignalLevel(int usTimeOut, bool state);
 };
-

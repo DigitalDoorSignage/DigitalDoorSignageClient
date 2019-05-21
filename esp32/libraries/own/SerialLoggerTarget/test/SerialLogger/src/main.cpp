@@ -1,34 +1,34 @@
 #include <Arduino.h>
 #include <Logger.h>
 #include <SerialLoggerTarget.h>
-#include <LoggerTarget.h>
-
-int logLevel = 0;
-LoggerTarget* sl;
 
 void setup() {
-    // put your setup code here, to run once:
     Serial.begin(115200);
+    Serial.println();
+    Serial.println("======================");
+    Serial.println("SerialLoggerTargetTest");
+    Serial.println("======================");
     Logger.init("test");
-    sl = new SerialLoggerTarget("test", 0);
-    Logger.addLoggerTarget(sl);
+    SerialLoggerTarget* serialLoggerTarget = new SerialLoggerTarget("seriallogger", 0);
+    Logger.addLoggerTarget(serialLoggerTarget);
 }
 
 void loop() {
     delay(1000);
-    Logger.info("Main-Loop", "Logtest Level: 0");
-    Logger.debug("Main-Loop", "Logtest Level: 1");
-    Logger.exception("Main-Loop", "Logtest Level: 2");
-    Logger.error("Main-Loop", "Logtest Level: 3");
-    Logger.fatalerror("Main-Loop", "Logtest Level: 4");
-    Logger.nolog("Main-Loop", "Logtest Level: 5");
+    LoggerTarget* serialLoggerTarget = Logger.getLoggerTarget("seriallogger");
+    int logLevel = serialLoggerTarget->getLogLevel();
+    Serial.printf("************ Setted LogLevel: %s *************\n", Logger.getLogLevelText(logLevel));
+    Logger.info("Main-Loop", "Logtest Level: Info");
+    Logger.debug("Main-Loop", "Logtest Level: Debug");
+    Logger.exception("Main-Loop", "Logtest Level: Exception");
+    Logger.error("Main-Loop", "Logtest Level: Error");
+    Logger.fatalerror("Main-Loop", "Logtest Level: Fatalerror");
     if(logLevel == LOG_LEVEL_NOLOG){
         logLevel = LOG_LEVEL_INFO;
-        sl->setType(logLevel);
-        Serial.println("");
+        serialLoggerTarget->setLogLevel(logLevel);
+        Serial.println("__________________________________________________");
     } else {
         logLevel++;
-        sl->setType(logLevel);
+        serialLoggerTarget->setLogLevel(logLevel);
     }
-    // put your main code here, to run repeatedly:
 }

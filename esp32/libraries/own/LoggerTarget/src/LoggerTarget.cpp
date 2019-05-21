@@ -1,14 +1,13 @@
 #include<LoggerTarget.h>
 #include<string.h>
 
-
-LoggerTarget::LoggerTarget(const char *thingName, int logLevel) {
-    strcpy(_thingName, thingName);
+LoggerTarget::LoggerTarget(const char *loggerName, int logLevel) {
+    strcpy(_loggerName, loggerName);
     _logLevel = logLevel;
 }
 
 char * LoggerTarget::getName() {
-    return _thingName;
+    return _loggerName;
 }
 
 int LoggerTarget::getLogLevel() {

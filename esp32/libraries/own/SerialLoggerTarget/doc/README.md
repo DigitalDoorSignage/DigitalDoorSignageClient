@@ -2,7 +2,7 @@
 
 ## Allgemeines
 
-Diese Klasse ist dazu da über Serial die Log Nachrichten zu schreiben.
+Diese Klasse ist dazu da über Serial die Log Nachrichten zu schreiben. Dabei wird die Zeit, weiters wird der Mqtt Addresse (wenn vorhanden) Log Level Text, der Tag des Errors und die Nachricht mitgegeben. 
 Dabei erbt SerialLoggerTarget von LoggerTarget.
 Das der SerialLoggerTarget verwendet werden kann muss ein Logger erstellt werden,
 danach muss diesen Logger die Instanz des SerialLoggerTarget mitbekommen da der Logger diesen verwaltet.

@@ -1,340 +1,251 @@
-#include "HttpServer.h"
-#include <InternLed.h>
-// #include <WiFiManager.h>
-#include <ThingConfig.h>
-#include <SPIFFS.h>
-#include <WiFi.h>
-// #include <Actor.h>
-// #include <Thing.h>
-//#include <ArduinoOTA.h>
+#include <esp_wifi.h>
+#include <esp_event.h>
+#include <esp_log.h>
+#include <esp_system.h>
+#include <nvs_flash.h>
+#include <sys/param.h>
+#include "nvs_flash.h"
+#include "tcpip_adapter.h"
+#include "esp_eth.h"
 
-#define WEMOS
+#include <iterator>
+#include <map>
 
-#ifdef WEMOS
-	#define LED_BUILTIN 2  // WEMOS MINI32
-#else 
-	#ifdef TTGO
-		#define LED_BUILTIN 16  // TTGO
-	#endif
-#endif
+#include <Constants.h>
+#include <HttpServer.h>
+#include <Logger.h>
+#include <EspConfig.h>
+#include <EspMqttClient.h>
 
+static const char *TAG = "httpserver";
 
+/*****************************   Handlers for GET-Requests *****************************/
 
-#define MQTT_SERVERADDRESS_LENGTH 40
-#define MQTT_PORT_LENGTH 6
-#define MQTT_USERNAME_LENGTH 20
-#define MQTT_PASSWORD_LENGTH 20
-#define MQTT_THING_NAME_LENGTH 80
-
-char _mqttServerAddress[MQTT_SERVERADDRESS_LENGTH]="10.0.0.125";
-char _mqttPort[MQTT_PORT_LENGTH] = "1883";
-char _mqttUserName[MQTT_USERNAME_LENGTH];
-char _mqttPassword[MQTT_PASSWORD_LENGTH];
-char _mqttThingName[MQTT_THING_NAME_LENGTH]="iot/test";
-
-
-HttpServerClass::HttpServerClass(int port) : WebServer(port)
+/**
+ * TestHandler for route /echo
+ * Gibt die Querystringparameter am seriellen Monitor aus und liefert sie als Echo zurück
+ */
+static esp_err_t echoHandler(httpd_req_t *req)
 {
-}
+    char loggerMessage[LENGTH_LOGGER_MESSAGE];
+    char responseMessage[LENGTH_LOGGER_MESSAGE];
 
-/*************************************** Callback-Funktionen für den Webserver ******************************/
- //! Gehört in die Sensor und Actor-Library
+    int headerLength = httpd_req_get_hdr_value_len(req, "Host");
+    sprintf(loggerMessage, "%d", headerLength);
+    Logger.debug("HttpServer, echoHandler(), HeaderLength:", loggerMessage);
+    if (headerLength > 0)
+    {
+        esp_err_t err = httpd_req_get_hdr_value_str(req, "Host", loggerMessage, headerLength + 1); // +1 erforderlich, sonst meldet er "truncated"
+        if (err == ESP_OK)                                                                         // Lesen des Headers war OK
+        {
+            Logger.info("HttpServer, echoHandler(), Header Host:", loggerMessage);
+        }
+        else
+        {
+            sprintf(loggerMessage, "httpd_req_get_hdr_value_str() ERROR: %d", err);
+            Logger.error("HttpServer, echoHandler()", loggerMessage);
+        }
+    }
 
-//! Allgemeiner Config-Request. Übermittelt werden Key/Value-Paare für die gewünschten Konfigurationseinträge
-void handleSetConfigRequest()
-{
-	char configKey[50];
-	char configValue[50];
-	Serial.println(F("*HS: handleSetConfigRequest()"));
-	for ( uint8_t i = 0; i < HttpServer.args(); i++ ) {
-		HttpServer.argName(i).toCharArray(configKey,50);
-		HttpServer.arg(i).toCharArray(configValue, 50);
-		Serial.printf("*HS: SetConfig, Key: %s, Value: %s\n", configKey, configValue);
-		ThingConfig.setValue(configKey, configValue );
-	}
+    int queryLength = httpd_req_get_url_query_len(req);
+    sprintf(loggerMessage, "%d", queryLength);
+    Logger.debug("HttpServer, echoHandler(), QueryLength:", loggerMessage);
 
-	char response[500];
-	ThingConfig.getConfigJson(response, 500);
-	Serial.print(F("*HS: Config: "));
-	Serial.println(response);
-	Serial.println(response);
-	HttpServer.send(200, "text/html", response); //Returns the HTTP response
-}
-
-/*
-	Umwandlung einer Hexziffer (0-15) in das Hexzeichen (0-F)
-*/
-char getHexChar(int digit)
-{
-	if (digit < 10)
-	{
-		return '0' + digit;
-	}
-	return 'A' + digit - 10;
-}
-
-/*
-  MAC-Adresse in entsprechenden String umwandeln
-  und in übergebenes char[] speichern
-*/
-void getMacAddress(char hexChars[])
-{
-	uint8_t *bssid = WiFi.BSSID();
-	for (int i = 0; i < 6; i++)
-	{
-		hexChars[i * 3] = getHexChar(bssid[i] / 16);
-		hexChars[i * 3 + 1] = getHexChar(bssid[i] % 16);
-		hexChars[i * 3 + 2] = ':';
-	}
-	hexChars[17] = 0;
-}
-
-/*
-	ESP meldet Statusinformationen, wie Mac-Adresse, SSID, WLAN-Funk-Feldstärke,
-	freien Heap-Speicher, den eigenen ThingName, MQTT-Username, MQTT-Broker-IP,
-	MQTT-Broker-Port
-		http://192.168.0.100/state
-*/
-void handleStateRequest()
-{
-	char hexChars[18];
-	char response[400];
-	char buffer[400];
-	getMacAddress(hexChars);
-	ThingConfig.getConfigJson(buffer, 400);
-
-	sprintf(response, "espMacAddress: %s<br/>\nwifiName: %s<br/>\nwifiStrength: %d<br/>\nfreeHeap: %d<br/>\nConfig: %s<br/>",
-			hexChars, WiFi.SSID().c_str(), WiFi.RSSI(), ESP.getFreeHeap(), buffer);
-
-	Serial.printf("*HS response-length: %d", strlen(response));
-	Serial.println("");
-	Serial.print(F("*HS: State: "));
-	Serial.println(response);
-	//Returns the HTTP response
-	HttpServer.send(200, "text/html", response);
-}
-
-//!!! Help-Request so umbauen, dass (wo es sinnvoll ist) gleich ein Link ausgegeben wird (z.B. state, ledfast, ledslow, ledoff, reset)
-void handleHelpRequest()
-{
-	char response[500];
-	sprintf(response, "getconfig<br/>setconfig?key1=value1&key2=value2<br/>state<br/>led/(fast|slow|off)<br/>reset<br/>setactor?actor=actorname&value=1<br/>getsensor?sensor=sensorname<br/>");
-	Serial.printf("*HS help response, response-length: %d\n", strlen(response));
-	//Returns the HTTP response
-	HttpServer.send(200, "text/html", response);
+    if (queryLength > 0)
+    {
+        esp_err_t err = httpd_req_get_url_query_str(req, loggerMessage, queryLength + 1);
+        if (err == ESP_OK) // Lesen der Querystringparameter war ok!
+        {
+            Logger.info("HttpServer, echoHandler(), QueryString:", loggerMessage);
+            sprintf(responseMessage, "%s", loggerMessage);
+        }
+        else
+        {
+            sprintf(loggerMessage, "httpd_req_get_url_query_str() ERROR: %d", err);
+            Logger.error("HttpServer, echoHandler()", loggerMessage);
+            sprintf(responseMessage, "ERROR READ QUERYSTRING!");
+        }
+    }
+    else
+    {
+        Logger.info("HttpServer, echoHandler(), QueryString:", "NO QUERYSTRING");
+        sprintf(responseMessage, "NO QUERYSTRING");
+    }
+    httpd_resp_send(req, responseMessage, strlen(responseMessage));
+    return ESP_OK;
 }
 
 /**
- * Get the current configuration
- * */
-void handleGetConfigRequest()
+ * Liefert die Querystringparameter als Map von Key/Value-Pairs zurück
+ */
+std::map<char *, char *> getQueryParams(char *queryString)
 {
-	char response[500];
-	ThingConfig.getConfigJson(response, 400);
-	Serial.print(F("*HS: Response-Config: "));
-	Serial.println(response);
-	//Returns the HTTP response
-	HttpServer.send(200, "text/html", response);
+    char *equalPtr;
+    std::map<char *, char *> keyValuePairs = std::map<char *, char *>();
+
+    char *keyValuePairText;
+    char *rest = queryString;
+
+    while ((keyValuePairText = strtok_r(rest, "&", &rest)))
+    {
+        printf("KeyValuePair gefunden: %s\n", keyValuePairText);
+        equalPtr = strtok(keyValuePairText, "=");
+        char *key = equalPtr;
+        equalPtr = strtok(NULL, "=");
+        char *value = equalPtr;
+        keyValuePairs.insert(std::pair<char *, char *>(key, value));
+    }
+    return keyValuePairs;
 }
 
 /**
- * Die interne Led kann per Http gesteuert werden
- * Mit dem Parameter fast=1 blinkt die LED schnell,
- * mit slow=1 blinkt sie langsam und mit off=1 wird
- * sie abgeschaltet
- *		http://192.168.0.100/led/fast
- *		http://192.168.0.100/led/slow
- *		http://192.168.0.100/led/off
-*/
-void handleInternLedFastRequest()
+ * Die Route /setconfig?key1=xxx&key2=yyy... setzt die
+ * entsprechenden Config-Strings im NVS
+ */
+static esp_err_t setconfigHandler(httpd_req_t *req)
 {
-	InternLed.blinkFast();
-	Serial.println(F("LED blinks fast"));
-	HttpServer.send(200, "text/html", "LED blinks fast");
+    char loggerMessage[LENGTH_LOGGER_MESSAGE];
+    esp_err_t err;
+    int queryLength = httpd_req_get_url_query_len(req) + 1;
+    if (queryLength > 0)
+    {
+        err = httpd_req_get_url_query_str(req, loggerMessage, queryLength);
+        if (err == ESP_OK)
+        {
+            std::map<char *, char *> configPairs = getQueryParams(loggerMessage);
+            std::map<char *, char *>::iterator itr;
+            for (itr = configPairs.begin(); itr != configPairs.end(); itr++)
+            {
+                // printf("Aus Map: Key: %s, Value: %s\n", itr->first, itr->second);
+                EspConfig.setNvsStringValue(itr->first, itr->second);
+            }
+        }
+        else
+        {
+            sprintf(loggerMessage, "httpd_req_get_url_query_str() ERROR: %d", err);
+            Logger.error("HttpServer, setconfigHandler()", loggerMessage);
+        }
+    }
+    else
+    {
+        Logger.info("HttpServer, setconfigHandler(), QueryString:", "NO QUERYSTRING");
+    }
+    const char *resp_str = "OK";
+    err = httpd_resp_send(req, resp_str, strlen(resp_str));
+    if (err != ESP_OK)
+    {
+        sprintf(loggerMessage, "httpd_resp_send() ERROR: %d", err);
+        Logger.error("HttpServer, setconfigHandler()", loggerMessage);
+    }
+    return ESP_OK;
 }
 
-void handleInternLedSlowRequest()
+static esp_err_t getConfigHandler(httpd_req_t *req)
 {
-	InternLed.blinkSlow();
-	Serial.println(F("LED blinks slow"));
-	HttpServer.send(200, "text/html", "LED blinks slow");
+    char loggerMessage[LENGTH_LOGGER_MESSAGE];
+    EspConfig.getConfig(loggerMessage, LENGTH_LOGGER_MESSAGE - 1);
+    httpd_resp_send(req, loggerMessage, strlen(loggerMessage));
+    return ESP_OK;
 }
 
-void handleInternLedOffRequest()
+static esp_err_t clearConfigHandler(httpd_req_t *req)
 {
-	InternLed.blinkOff();
-	Serial.println(F("LED off"));
-	HttpServer.send(200, "text/html", "LED off");
+    char loggerMessage[LENGTH_LOGGER_MESSAGE];
+    sprintf(loggerMessage, "Config cleared!");
+    EspConfig.clearConfig();
+    httpd_resp_send(req, loggerMessage, strlen(loggerMessage));
+    return ESP_OK;
 }
 
-/*
-	Credentials für das WLAN werden zurückgesetzt
-	SPIFFS wird formatiert
-*/
-void handleResetEspRequest()
+static const httpd_uri_t getconfig = {
+    .uri = "/getconfig",
+    .method = HTTP_GET,
+    .handler = getConfigHandler,
+    .user_ctx = nullptr};
+
+static const httpd_uri_t clearconfig = {
+    .uri = "/clearconfig",
+    .method = HTTP_GET,
+    .handler = clearConfigHandler,
+    .user_ctx = nullptr};
+
+static const httpd_uri_t setconfig = {
+    .uri = "/setconfig",
+    .method = HTTP_GET,
+    .handler = setconfigHandler,
+    .user_ctx = nullptr};
+
+static const httpd_uri_t echo = {
+    .uri = "/echo",
+    .method = HTTP_GET,
+    .handler = echoHandler,
+    .user_ctx = nullptr};
+
+void HttpServerClass::addRoute(const httpd_uri *httpdUri)
 {
-	InternLed.blinkSlow();
-	const char *response = "Formating the FlashFileSystem<br>Wifi-Connection reset settings, reboot ESP";
-	HttpServer.send(200, "text/html", response); //Returns the HTTP response
-	delay(1000);
-	Serial.println(F("*HS Format flash memory!"));
-	SPIFFS.format();
-	Serial.println(F("*HS Done!"));
-	WiFi.disconnect(true);
-	WiFiManager wm;
-	Serial.println(F("*HS WifiManager resetSettings()"));
-	wm.resetSettings();
-	Serial.println(F("*HS Done!"));
-
-	Serial.println(F("*HS Done!"));
-
-	InternLed.blinkOff();
+    char loggerMessage[LENGTH_LOGGER_MESSAGE];
+    Logger.info("HttpServer, addRoute()", httpdUri->uri);
+    esp_err_t err = httpd_register_uri_handler(_server, httpdUri);
+    if (err != ESP_OK)
+    {
+        sprintf(loggerMessage, "httpd_register_uri_handler() ERROR: %d", err);
+        Logger.error("HttpServer, addRoute()", loggerMessage);
+    }
 }
 
-/*************************************** Allgemeine HttpServer-Methoden ******************************/
-
-//flag for saving data
-bool saveConfig = false;
-
-//callback notifying us of the need to save config
-void saveConfigToFileCallback()
+httpd_handle_t HttpServerClass::startWebserver()
 {
-	Serial.println("*HS Should save config");
-	saveConfig = true;
+    httpd_handle_t server = NULL;
+    httpd_config_t config = HTTPD_DEFAULT_CONFIG();
+
+    // Start the httpd server
+    ESP_LOGI(TAG, "Starting server on port: '%d'", config.server_port);
+    if (httpd_start(&server, &config) == ESP_OK)
+    {
+        // Set URI handlers
+        ESP_LOGI(TAG, "Registering URI handlers");
+        httpd_register_uri_handler(server, &echo);
+        httpd_register_uri_handler(server, &setconfig);
+        httpd_register_uri_handler(server, &getconfig);
+        httpd_register_uri_handler(server, &clearconfig);
+        // httpd_register_uri_handler(server, &testmqttrequest);
+        return server;
+    }
+
+    ESP_LOGI(TAG, "Error starting server!");
+    return NULL;
 }
 
-//gets called when WiFiManager enters configuration mode
-void configModeCallback (WiFiManager *myWiFiManager) {
-  Serial.println("Entered config mode");
-  Serial.println(WiFi.softAPIP());
-  //if you used auto generated SSID, print it
-  Serial.println(myWiFiManager->getConfigPortalSSID());
-  //entered config mode, make led toggle faster
-}
+// static void stop_webserver(httpd_handle_t server)
+// {
+//     // Stop the httpd server
+//     httpd_stop(server);
+// }
 
+// static void disconnect_handler(void* arg, esp_event_base_t event_base,
+//                                int32_t event_id, void* event_data)
+// {
+//     httpd_handle_t* server = (httpd_handle_t*) arg;
+//     if (*server) {
+//         ESP_LOGI(TAG, "Stopping webserver");
+//         stop_webserver(*server);
+//         *server = NULL;
+//     }
+// }
 
-/*
-	Accesspoint definieren und öffnen. Webserver starten und auf Get-Request warten
-*/
+// static void connect_handler(void* arg, esp_event_base_t event_base,
+//                             int32_t event_id, void* event_data)
+// {
+//     httpd_handle_t* server = (httpd_handle_t*) arg;
+//     if (*server == NULL) {
+//         ESP_LOGI(TAG, "Starting webserver");
+//         *server = startWebserver();
+//     }
+// }
+
 void HttpServerClass::init()
 {
-	char buffer[200];
-	InternLed.init(LED_BUILTIN);
-	//set callback that gets called when connecting to previous WiFi fails, and enters Access Point mode
-  	_wifiManager.setAPCallback(configModeCallback);
-	// Konfiguration aus ThingConfig einlesen
-	ThingConfig.getConfigJson(buffer, 500);	// Gesamte Config als JSON-String auslesen
-	Serial.printf("*HS Last saved config-json: %s\n",buffer);
-
-	// WiFiManger vorbereiten für Konfiguration per Webseite
-	WiFiManagerParameter custom_mqtt_server("server", "mqtt server", ThingConfig.getValue("server"), MQTT_SERVERADDRESS_LENGTH);
-	WiFiManagerParameter custom_mqtt_port("port", "mqtt port", ThingConfig.getValue("port"), MQTT_PORT_LENGTH);
-	WiFiManagerParameter custom_mqtt_user("user", "mqtt user", ThingConfig.getValue("user"), MQTT_USERNAME_LENGTH);
-	WiFiManagerParameter custom_mqtt_pass("password", "mqtt pass", ThingConfig.getValue("password"), MQTT_PASSWORD_LENGTH);
-	WiFiManagerParameter custom_mqtt_thing_name("thingname", "mqtt thing name", ThingConfig.getValue("thingname"), MQTT_THING_NAME_LENGTH);
-
-	_wifiManager.setSaveConfigCallback(saveConfigToFileCallback);
-
-	_wifiManager.addParameter(&custom_mqtt_server);
-	_wifiManager.addParameter(&custom_mqtt_port);
-	_wifiManager.addParameter(&custom_mqtt_user);
-	_wifiManager.addParameter(&custom_mqtt_pass);
-	_wifiManager.addParameter(&custom_mqtt_thing_name);
-
-	// WiFiManager wifiManager; // WiFiManager anlegen
-	// _wifiManager.autoConnect(PHSEM_AP_NAME);
-
-	// Namen des AP mit Suffix MAC-Adresse erzeugen
-	// char hexChars[18]; // Macadresse ermitteln
-	// getMacAddress(hexChars);
-	// char apName[25];
-	// sprintf(apName, "ESP_%s", hexChars); // SSID zusammenstoppeln
-	InternLed.blinkFast();				 // Signal dafür, dass ESP mit eigenem AP auf 192.168.4.1 wartet
-
-	bool isConnected = true;
-	//fetches ssid and pass and tries to connect
-	//if it does not connect it starts an access point with the specified name
-	//here  "AutoConnectAP"
-	//and goes into a blocking loop awaiting configuration
-  	if (!_wifiManager.autoConnect()) {
-    	Serial.println("failed to connect and hit timeout");
-    	//reset and try again, or maybe put it to deep sleep
-    	isConnected=false;
-	}
-
-	// _wifiManager.setConfigPortalTimeout(240);
-	// //	if (!wifiManager.autoConnect(apName))  // gecachte Credentials werden verwendet
-	// if (!wifiManager.autoConnect(PHSEM_AP_NAME)) // gecachte Credentials werden verwendet
-	// {
-	// 	// Serial.println(F("Failed to connect. Reset and try again..."));
-	// 	isConnected = false;
-	// 	// delay(3000);
-	// 	// ESP.reset();						//reset and try again
-	// 	// delay(5000);
-	// }
-	// delay(100);
-
-
-	if (saveConfig)
-	{
-		// read updated parameters
-		// save to configfile
-		Serial.println(F("*HS: Save config-values to file"));
-		ThingConfig.setValue("server", custom_mqtt_server.getValue());
-		ThingConfig.setValue("port", custom_mqtt_port.getValue());
-		ThingConfig.setValue("user", custom_mqtt_user.getValue());
-		ThingConfig.setValue("password", custom_mqtt_pass.getValue());
-		ThingConfig.setValue("thingname", custom_mqtt_thing_name.getValue());
-		ThingConfig.saveConfig();
-		ThingConfig.readConfig();
-		ThingConfig.getConfigJson(buffer, 500);	// Gesamte Config als JSON-String auslesen
-		Serial.printf("*HS Saved config-json: %s\n",buffer);
-
-		delay(1000);
-	}
-	if (isConnected)
-	{
-		Serial.println(F("*HS: Connected to WiFi!"));
-		const char* thingName =ThingConfig.getValue("thingname");
-		//const char* thingName ="esp32-demo";
-		// Serial.printf("*HS: Thingname from config: %s\n", thingName);
-		if(strlen(thingName) > 0){
-			Serial.printf("*HS: Set hostname to %s\n", thingName);
-			char hostName[50];
-			strlcpy(hostName, thingName, 50);
-			for(int i=0; i<strlen(hostName); i++){
-				if(hostName[i]=='/'){
-					hostName[i] = '-';
-				}
-			}
-			WiFi.setHostname(hostName);
-			//ArduinoOTA.setHostname(hostName);
-		}
-
-		Serial.printf("*HS: Hostname: %s\n", WiFi.getHostname());
-		// Serial.println(wifi_station_get_hostname());
-		InternLed.blinkOff();
-		//InternLed.blinkSlow();
-		on("/reset", handleResetEspRequest);		  // ESP resetten
-		on("/state", handleStateRequest);			  // Status (Heap, Funkfeldstärke, ...) ausgeben
-		on("/help", handleHelpRequest);			  
-		on("/led/fast", handleInternLedFastRequest);
-		on("/led/slow", handleInternLedSlowRequest);
-		on("/led/off", handleInternLedOffRequest);
-		on("/getconfig", handleGetConfigRequest);
-		on("/setconfig", handleSetConfigRequest);
-		begin();
-		// Serial.println(F("*HS: Webserver started"));
-		delay(3000);
-		Serial.println(F("*HS: Webserver started"));
-	}
-	else
-	{
-		Serial.println(F("!HS: not connected to WiFi!"));
-		delay(3000);
-		ESP.restart(); //reset and try again
-	}
+    _server = startWebserver();
 }
 
-// Quasi Singletonimplementierung
 HttpServerClass HttpServer;

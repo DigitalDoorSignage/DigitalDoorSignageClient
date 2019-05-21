@@ -1,330 +1,266 @@
-/*
-    Erfassung der Temperatur und Luftfeuchtigkeit ohne Blockade unter Verwendung
-    eines Tickers und per GPIO-Interrupt zur PWM-Messung
-*/
+/*------------------------------------------------------------------------------
+	DHT22 CPP temperature & humidity sensor AM2302 (DHT22) driver for ESP32
+	Jun 2017:	Ricardo Timmermann, new for DHT22
+
+	This example code is in the Public Domain (or CC0 licensed, at your option.)
+	Unless required by applicable law or agreed to in writing, this
+	software is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR
+	CONDITIONS OF ANY KIND, either express or implied.
+	PLEASE KEEP THIS CODE IN LESS THAN 0XFF LINES. EACH LINE MAY CONTAIN ONE BUG !!!
+---------------------------------------------------------------------------------*/
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include <esp_log.h>
 
 #include "Dht22.h"
+#include <Logger.h>
+#include <Constants.h>
 
-//#define Dht22_DEBUG
+static char TAG[] = "DHT";
 
-// Zustände, die per Ticker.once() im richtigen Zeitabstand durchlaufen werden
-#define INIT                        0
-#define PREPARE_MEASUREMENT_LOW     1
-#define START_MEASUREMENT           2
-#define DO_READING                  3
-#define COOLDOWN                    4
+/*-----------------------------------------------------------------------
+;
+;	Constructor & default settings
+;
+;------------------------------------------------------------------------*/
 
-// Errorpositionen werden für den letzten aufgetretenen Fehler gespeichert
-#define ERROR_INDEX       1
-#define ERROR_BITLENGTH   2
-#define ERROR_CHECKSUM    3
-
-// Statischer Pointer auf die Instanz des Dht22-Objektes, den die indirekt
-// per ISR aufgerufenen Funktionen verwenden, um auf private fields zuzugreifen.
-// Sonst müssen alle Variablen, die in der ISR verwendet werden global definiert werden
-static Dht22 *dht22Instance;
-
-static IRAM_ATTR void processEventStatic(){
-  dht22Instance->processEvent();
-}
-
-Dht22::Dht22(uint8_t pin)
+Dht22::Dht22()
 {
-  dht22Instance = this;
-  _pin=pin;
-  _state = INIT;
-  pinMode(_pin, INPUT_PULLUP);
-  digitalWrite( _pin, HIGH );
-  _ticker.once_ms(10,processEventStatic);  // gleich nach der Instanzierung starten
+
+    _pin = GPIO_NUM_4;
+    _humidity = -100;
+    _temperature = -100;
 }
 
 /*
-    Statische Methode, die als ISR verwendet wird.
-    Ruft ihrerseits die Instanzmethode, die Zugriff auf die fields hat, auf
+DHT::~DHT( void )
+{
+}
 */
-static IRAM_ATTR void notifyChangingEdgeStatic(){
-  dht22Instance->notifyChangingEdge();
-}
 
-/**
- * Eigentliche Interruptserviceroutine, die nur den Zeitpunkt des Auftretens einer
- * Flanke im Array dokumentiert.
- */
-void IRAM_ATTR Dht22::notifyChangingEdge() {
-  if(_changingEdgeIndex < TIMESTAMPS){
-    _changingEdgeMicroSeconds[_changingEdgeIndex]=micros();
-    _changingEdgeIndex++;
-  }
-}
+// ----------------------------------------------------------------------
 
-
-/*
- * Der Messablauf des Sensors wird blockadefrei abgearbeitet, indem
- * jeweils mit "EinmalTicker" immer der nächste Zustand angesteuert
- * wird.
- * Die Erfassung der eigentlichen Messdaten erfolgt dann über einen
- * GPIO-Interrupt. Deren Auswertung im nicht zeitkritischen Ablauf
- * der FSM. 
- * Die Zeit bis zum nächsten Ereignis ist abgelaufen
- */
-void IRAM_ATTR Dht22::processEvent()
+void measurementInLoopTask(void *pvParameter)
 {
-  uint8_t humidityHigh=0;
-  uint8_t humidityLow=0;
-  uint8_t temperatureHigh=0;
-  uint8_t temperatureLow=0;
-  uint8_t checksum;
-  uint8_t byteValue=0;
-  int bitIndex = 0;
-  int byteIndex = 0;
-  unsigned long microSeconds; 
-  bool isError=false;
+    char loggerMessage[LENGTH_LOGGER_MESSAGE];
+    Dht22 *dhtPtr = (Dht22 *)pvParameter;
+    sprintf(loggerMessage, "GPIO: %d", dhtPtr->_pin);
+    Logger.info("Dht, measurementInLoopTask()", loggerMessage);
 
-  switch(_state)
-  {
-  case INIT:  // Neue Messung startet wieder
-#ifdef Dht22_DEBUG
-    Serial.println();
-    Serial.println("INIT");
-#endif    
-    digitalWrite(_pin, HIGH);  // ist noch Eingang mit PullUp
-    _changingEdgeIndex=0;
-    for(int i=0; i<TIMESTAMPS;i++){  // Timestamps löschen
-      _changingEdgeMicroSeconds[i]=0;
+    while (1)
+    {
+        int ret = dhtPtr->readDht();
+        dhtPtr->errorHandler(ret);
+
+        sprintf(loggerMessage, "Hum: %.1f Tmp: %.1f", dhtPtr->getHumidity(), dhtPtr->getTemperature());
+        Logger.info("Dht, measurementInLoopTask()", loggerMessage);
+
+        // -- wait at least 2 sec before reading again ------------
+        // The interval of whole process must be beyond 2 seconds !!
+        vTaskDelay(10000 / portTICK_RATE_MS);
     }
-    _state = PREPARE_MEASUREMENT_LOW;
-    _ticker.once_ms(250,processEventStatic);
-    break;
-
-  case PREPARE_MEASUREMENT_LOW:  // Auf Ausgang und 20 ms auf LOW legen
-#ifdef Dht22_DEBUG
-    Serial.println("PREPARE_MEASUREMENT_LOW");
-#endif    
-    pinMode(_pin, OUTPUT);
-    digitalWrite(_pin, LOW);
-    _state = START_MEASUREMENT;
-    _ticker.once_ms(20,processEventStatic);
-    break;
-
-  case START_MEASUREMENT:  // Startsignal im Mikrosekundenbereich geben und auf Ergebnis warten
-#ifdef Dht22_DEBUG
-    Serial.println("START_MEASUREMENT");
-#endif    
-    // End the start signal by setting data line high for 40 microseconds.
-    digitalWrite(_pin, HIGH);
-    delayMicroseconds(40);
-    // Now start reading the data line to get the value from the DHT sensor.
-    pinMode(_pin, INPUT_PULLUP);
-    // GPIO-Interrupt scharf schalten
-    attachInterrupt(digitalPinToInterrupt(_pin), notifyChangingEdgeStatic, CHANGE);
-    delayMicroseconds(10);  // Delay a bit to let sensor pull data line low.
-    _state = DO_READING;
-    _ticker.once_ms(100,processEventStatic);  // in 100 ms ist der Einlesezyklus leicht abgeschlossen
-    break;
-
-  case DO_READING: // alle Daten wurden in der ISR gesammelt ==> aufbereiten
-    detachInterrupt(digitalPinToInterrupt(_pin));
-    if(_changingEdgeIndex < 82){    // zu wenige Daten im Hintergrund von ISR gesammelt
-#ifdef Dht22_DEBUG
-        Serial.print("!!! DO_READING too less bits, Index: ");
-        Serial.println(_changingEdgeIndex);
-#endif    
-        _lastErrorPos = 1;
-        _lastErrorCode = ERROR_INDEX;
-        _lastErrorMilliSeconds = millis();
-        isError=true;
-    }
-    else{   // genug Daten im Hintergrund von ISR gesammelt
-#ifdef Dht22_DEBUG
-      Serial.print("Index: ");
-      Serial.println(_changingEdgeIndex);
-      Serial.println("Timestamps");
-  /*
-      for(int i=0; i<TIMESTAMPS; i++){
-        Serial.print(_changingEdgeMicroSeconds[i]);
-        Serial.print(" ");
-      }
-      Serial.println();
-  */
-#endif    
-      bitIndex=0;
-      byteIndex=0;
-      // Startbits überlesen
-      for(int i=2; i<TIMESTAMPS && _changingEdgeMicroSeconds[i] != 0; i++){
-        microSeconds=_changingEdgeMicroSeconds[i]-_changingEdgeMicroSeconds[i-1];
-        if(i%2 != 0){  // nur die Dauer der HIGH-Pegel
-          byteValue = byteValue << 1;
-          if(microSeconds > 60 && microSeconds < 90){
-            byteValue++;
-          }
-          else if (microSeconds <= 10 || microSeconds >= 40){
-#ifdef Dht22_DEBUG
-            Serial.println();
-            Serial.print("!!! Illegal length of bit: ");
-            Serial.print(i-2);
-            Serial.print(", Duration: ");
-            Serial.print(microSeconds);
-            Serial.println(" ms");
-#endif    
-            _lastErrorPos = 2;
-            _lastErrorCode = ERROR_BITLENGTH;
-            _lastErrorMilliSeconds = millis();
-            isError=true;
-            break;  // Schleife beenden
-          }
-          bitIndex++;
-          if(bitIndex >= 8){
-            if(byteIndex == 0){
-              humidityHigh = byteValue;
-            }
-            else if(byteIndex == 1){
-              humidityLow = byteValue;
-            }
-            else if(byteIndex == 2){
-              temperatureHigh = byteValue;
-            }
-            else if(byteIndex == 3){
-              temperatureLow = byteValue;
-            }
-            else {
-              checksum = byteValue;
-              int sumOfBytes=humidityHigh+humidityLow+temperatureHigh+temperatureLow;
-              if (checksum != (sumOfBytes % 256 )){
-#ifdef Dht22_DEBUG
-                Serial.println();
-                Serial.print("!!! Checksum Error sumOfDgits: ");
-                Serial.print(sumOfBytes % 256);
-                Serial.print(" expected: ");
-                Serial.println(checksum);
-#endif    
-                _lastErrorPos = 3;
-                _lastErrorCode = ERROR_CHECKSUM;
-                _lastErrorMilliSeconds = millis();
-                isError=true;
-                break;  // Schleife beenden
-              }
-            }
-            byteValue=0;
-            bitIndex=0;
-            byteIndex++;
-          }
-        }
-#ifdef Dht22_DEBUG
-        Serial.print(microSeconds);
-        if(i%2==0){
-          Serial.print(";");
-        }
-        else{
-          Serial.println();
-        }
-#endif    
-      }
-      if(!isError){
-#ifdef Dht22_DEBUG
-        Serial.println();
-        Serial.print("Humidity HighByte: ");
-        Serial.print(humidityHigh);
-        Serial.print(", Humidity LowByte: ");
-        Serial.print(humidityLow);
-        Serial.print(", Temperature HighByte: ");
-        Serial.print(temperatureHigh);
-        Serial.print(", Temperature LowByte: ");
-        Serial.print(temperatureLow);
-        Serial.print(", CheckSum: ");
-        Serial.println(checksum);
-#endif    
-        _humidity = (humidityHigh*256+humidityLow)/10.0;
-        int sign = 1;   // negative Temperaturen richtig berechnen
-        if(_temperature >= 256){  // highest bit gesetzt ==> sign negativ und bit löschen
-          _temperature-=256;
-          sign=-1;
-        }
-        _temperature = (temperatureHigh*256+temperatureLow)/10.0*sign;
-#ifdef Dht22_DEBUG
-        Serial.print("Humidity: ");
-        Serial.print(_humidity);
-        Serial.print(", Temperature: ");
-        Serial.println(_temperature);
-#endif    
-        _lastCorrectMeasurementMilliSeconds=millis();
-      }
-    }
-    _state = COOLDOWN;
-    _ticker.once_ms(10,processEventStatic); 
-    break;
-
-  // Restliche Zeit des Messintervalls verstreichen lassen.
-  case COOLDOWN:
-#ifdef Dht22_DEBUG
-    Serial.println("COOLDOWN");
-#endif    
-    _state = INIT;
-    pinMode(_pin, INPUT_PULLUP);
-    digitalWrite( _pin, HIGH );
-    _ticker.once_ms(3000,processEventStatic);  // gleich nach der Instanzierung starten
-    break;
-
-  default:
-    break;
-  }
 }
 
-/*
-    Wenn innerhalb der letzten Minute ein gültiger Messwert 
-    ermittelt wurde, wird dieser zurückgegeben.
-*/
-float Dht22::getTemperature()
+void Dht22::init(gpio_num_t gpio)
 {
-  if(millis() - _lastCorrectMeasurementMilliSeconds > 60000){ // letzte Minute kein gültiger Messwert
-    return -100;
-  }
-  return _temperature;
+    _pin = gpio;
+    xTaskCreate(measurementInLoopTask,   /* Task function. */
+                "measurementInLoopTask", /* String with name of task. */
+                10000,                   /* Stack size in words. */
+                this,                    /* Parameter passed as input of the task */
+                1,                       /* Priority of the task. */
+                NULL                     /* Task handle. */
+    );
 }
 
-/*
-    Wenn innerhalb der letzten Minute ein gültiger Messwert 
-    ermittelt wurde, wird dieser zurückgegeben.
-*/
-float Dht22::getHumidity()
+// == get temp & hum =============================================
+
+float Dht22::getHumidity() { return _humidity; }
+float Dht22::getTemperature() { return _temperature; }
+
+// == error handler ===============================================
+
+void Dht22::errorHandler(int errorCode)
 {
-  if(millis() - _lastCorrectMeasurementMilliSeconds > 60000){ // letzte Minute kein gültiger Messwert
-    return -100;
-  }
-  return _humidity;
+    switch (errorCode)
+    {
+
+    case DHT_TIMEOUT_ERROR:
+        ESP_LOGE(TAG, "Sensor Timeout\n");
+        break;
+
+    case DHT_CHECKSUM_ERROR:
+        ESP_LOGE(TAG, "CheckSum error\n");
+        break;
+
+    case DHT_OK:
+        break;
+
+    default:
+        ESP_LOGE(TAG, "Unknown error\n");
+    }
 }
 
-/*
-    Code des zuletzt aufgetretenen Fehlers
-*/
-uint8_t Dht22::getLastErrorCode(){
-  return _lastErrorCode;
+/*-------------------------------------------------------------------------------
+;
+;	get next state
+;
+;	I don't like this logic. It needs some interrupt blocking / priority
+;	to ensure it runs in realtime.
+;
+;--------------------------------------------------------------------------------*/
+
+int Dht22::getSignalLevel(int usTimeOut, bool state)
+{
+
+    int uSec = 0;
+    while (gpio_get_level(_pin) == state)
+    {
+
+        if (uSec > usTimeOut)
+            return -1;
+
+        ++uSec;
+        ets_delay_us(1); // uSec delay
+    }
+
+    return uSec;
 }
 
-/*
-    Position des zuletzt aufgetretenen Fehlers
-*/
-uint8_t Dht22::getLastErrorPosition(){
-  return _lastErrorPos;
+/*----------------------------------------------------------------------------
+;
+;	read DHT22 sensor
+
+	copy/paste from AM2302/DHT22 Docu:
+	DATA: Hum = 16 bits, Temp = 16 Bits, check-sum = 8 Bits
+	Example: MCU has received 40 bits data from AM2302 as
+	0000 0010 1000 1100 0000 0001 0101 1111 1110 1110
+	16 bits RH data + 16 bits T data + check sum
+
+	1) we convert 16 bits RH data from binary system to decimal system, 0000 0010 1000 1100 → 652
+	Binary system Decimal system: RH=652/10=65.2%RH
+	2) we convert 16 bits T data from binary system to decimal system, 0000 0001 0101 1111 → 351
+	Binary system Decimal system: T=351/10=35.1°C
+	When highest bit of temperature is 1, it means the temperature is below 0 degree Celsius.
+	Example: 1000 0000 0110 0101, T= minus 10.1°C: 16 bits T data
+	3) Check Sum=0000 0010+1000 1100+0000 0001+0101 1111=1110 1110 Check-sum=the last 8 bits of Sum=11101110
+
+	Signal & Timings:
+	The interval of whole process must be beyond 2 seconds.
+
+	To request data from DHT:
+	1) Sent low pulse for > 1~10 ms (MILI SEC)
+	2) Sent high pulse for > 20~40 us (Micros).
+	3) When DHT detects the start signal, it will pull low the bus 80us as response signal,
+	   then the DHT pulls up 80us for preparation to send data.
+	4) When DHT is sending data to MCU, every bit's transmission begin with low-voltage-level that last 50us,
+	   the following high-voltage-level signal's length decide the bit is "1" or "0".
+		0: 26~28 us
+		1: 70 us
+;----------------------------------------------------------------------------*/
+
+#define MAXdhtData 5 // to complete 40 = 5*8 Bits
+
+int Dht22::readDht()
+{
+    int uSec = 0;
+
+    uint8_t dhtData[MAXdhtData];
+    uint8_t byteInx = 0;
+    uint8_t bitInx = 7;
+
+    for (int k = 0; k < MAXdhtData; k++)
+        dhtData[k] = 0;
+
+    // == Send start signal to DHT sensor ===========
+
+    gpio_set_direction(_pin, GPIO_MODE_OUTPUT);
+
+    // pull down for 3 ms for a smooth and nice wake up
+    gpio_set_level(_pin, 0);
+    ets_delay_us(3000);
+
+    // pull up for 25 us for a gentile asking for data
+    gpio_set_level(_pin, 1);
+    ets_delay_us(25);
+
+    gpio_set_direction(_pin, GPIO_MODE_INPUT); // change to input mode
+
+    // == DHT will keep the line low for 80 us and then high for 80us ====
+
+    uSec = getSignalLevel(85, 0);
+    ESP_LOGD(TAG, "Response = %d", uSec);
+    if (uSec < 0)
+        return DHT_TIMEOUT_ERROR;
+
+    // -- 80us up ------------------------
+
+    uSec = getSignalLevel(85, 1);
+    ESP_LOGD(TAG, "Response = %d", uSec);
+    if (uSec < 0)
+        return DHT_TIMEOUT_ERROR;
+
+    // == No errors, read the 40 data bits ================
+
+    for (int k = 0; k < 40; k++)
+    {
+
+        // -- starts new data transmission with >50us low signal
+
+        uSec = getSignalLevel(56, 0);
+        if (uSec < 0)
+            return DHT_TIMEOUT_ERROR;
+
+        // -- check to see if after >70us rx data is a 0 or a 1
+
+        uSec = getSignalLevel(75, 1);
+        if (uSec < 0)
+            return DHT_TIMEOUT_ERROR;
+
+        // add the current read to the output data
+        // since all dhtData array where set to 0 at the start,
+        // only look for "1" (>28us us)
+
+        if (uSec > 40)
+        {
+            dhtData[byteInx] |= (1 << bitInx);
+        }
+
+        // index to next byte
+
+        if (bitInx == 0)
+        {
+            bitInx = 7;
+            ++byteInx;
+        }
+        else
+            bitInx--;
+    }
+
+    // == get humidity from Data[0] and Data[1] ==========================
+
+    _humidity = dhtData[0];
+    _humidity *= 0x100; // >> 8
+    _humidity += dhtData[1];
+    _humidity /= 10; // get the decimal
+
+    // == get temp from Data[2] and Data[3]
+
+    _temperature = dhtData[2] & 0x7F;
+    _temperature *= 0x100; // >> 8
+    _temperature += dhtData[3];
+    _temperature /= 10;
+
+    if (dhtData[2] & 0x80) // negative temp, brrr it's freezing
+        _temperature *= -1;
+
+    // == verify if checksum is ok ===========================================
+    // Checksum is the sum of Data 8 bits masked out 0xFF
+
+    if (dhtData[4] == ((dhtData[0] + dhtData[1] + dhtData[2] + dhtData[3]) & 0xFF))
+        return DHT_OK;
+
+    else
+        return DHT_CHECKSUM_ERROR;
 }
-
-/*
-    Wann trat der letzte Fehler auf (Zeitabstand in Sekunden)
-*/
-long Dht22::getSecondsFromLastError(){
-  if(_lastErrorMilliSeconds == 0){
-    return -1;
-  }
-  return (millis() -_lastErrorMilliSeconds)/1000;
-}
-
-/*
-    Wie alt (in Sekunden) ist der gelieferte Messwert.
-*/
-long Dht22::getSecondsFromLastCorrectMeasurement(){
-  if(_lastCorrectMeasurementMilliSeconds == 0){
-    return -1;
-  }
-  return (millis() -_lastCorrectMeasurementMilliSeconds)/1000;
-}
-
-

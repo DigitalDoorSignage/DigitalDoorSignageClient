@@ -35,6 +35,7 @@ public:
 	* Die Konfiguration wird als JSON-String zurückgegeben
 	*/
 	void getConfigJson(char* buffer, size_t size);
+	void getConfigJsonWithoutCredentials(char* buffer, size_t size);
 
 	/**
 	 * Wert aus der Konfiguration auslesen (Key ist case-sensitiv)
@@ -45,6 +46,11 @@ public:
 	 * Wert in Konfiguration anlegen oder überschreiben
 	 */
 	void setValue(const char* key, const char* value);
+
+	/**
+	 * Key wird aus der Konfiguration entfernt
+	 */
+	void deleteKey(const char* key);
 
 private:
 	void initJsonConfig();

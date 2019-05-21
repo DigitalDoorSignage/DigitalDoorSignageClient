@@ -1,24 +1,15 @@
-// WifiHttpServer.h
 #pragma once
 
-#include <Arduino.h>
-#include <WiFiManager.h>
-#include <WebServer.h>
+#include <esp_http_server.h>
 
-/*
- * Der HttpServer verarbeitet einlangende HTTP-Get-Requests.
- * Neben den Standardrouten kann jedes Modul seine eigenen
- * RequestHandler registrieren und wird dann vom HttpServer
- * verständigt, wenn ein Request einlangt.
- */
-class HttpServerClass : public WebServer
+class HttpServerClass
 {
- public:
-	HttpServerClass(int port = 80);
-	void init();
- private:
-	WiFiManager _wifiManager;
+    public:
+        void init();
+        void addRoute(const httpd_uri* httpdUri);
+        
+    private:
+    httpd_handle_t startWebserver();
+    httpd_handle_t _server;
 };
-
 extern HttpServerClass HttpServer;
-

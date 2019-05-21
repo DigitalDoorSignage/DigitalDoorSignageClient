@@ -1,48 +1,42 @@
 #include "UdpLoggerTarget.h"
-#include <Arduino.h>
-#include <Thing.h>
+#include <Constants.h>
+#include <EspConfig.h>
+#include <EspTime.h>
+#include <Logger.h>
+#include <string.h>
+#include <EspUdp.h>
 
-/**
- * Ermittelt aus der aktuellen IP-Adresse die Broadcastadresse, die im letzten Byte
- * FF enthält.
- */
-uint32_t getBroadcastIp(){
-	tcpip_adapter_ip_info_t ipInfo; 
-	tcpip_adapter_get_ip_info(TCPIP_ADAPTER_IF_STA, &ipInfo); 
-	uint32_t broadcastAddress = ipInfo.ip.addr % (16777216) + 4278190080u; //(255*256*256*256);
-	Serial.printf("*UT Broadcast-IP: %x\n", broadcastAddress);
-	return broadcastAddress;
+
+UdpLoggerTarget::UdpLoggerTarget(const char *ipAddress, int logLevel )
+	: LoggerTarget(ipAddress, logLevel)
+{
+	strcpy(_ipAddress, ipAddress);
+	char loggerMessage[LENGTH_LOGGER_MESSAGE];
+	sprintf(loggerMessage, "Udp-TargetAddress: %s, Port: %d created", _ipAddress, _port);
+	Logger.info("Udplogger Constructor", loggerMessage);
 }
 
-UdpLoggerTarget::UdpLoggerTarget(const char* name, int logLevel)
-    :LoggerTarget(name, logLevel){
-	Serial.printf("*UT In UdpLoggerTarget Constructor without ip\n");
-	_ip = IPAddress(getBroadcastIp());
-	_port = 49155;
-	String ipAddressText = _ip.toString();
-	char ipAddressBuffer[100];
-	ipAddressText.toCharArray(ipAddressBuffer, 100);
-	Serial.printf("*UT Udp-TargetAddress: %s, Port: %d\n", ipAddressBuffer, _port);
+void UdpLoggerTarget::log(const char *logLevelText, const char *tag, const char *message)
+{
+	_id++;
+	char logMessage[LENGTH_LOGGER_MESSAGE];
+	// char timeText[LENGTH_MIDDLE_TEXT];
+	long time = EspTime.getTime();
+	// Serial.printf("*ULT Thingname: %s\n", Logger.getThingName());
+	sprintf(logMessage, "%ld;%ld;%s;%s;%s;%s", time, _id, EspConfig.getThingName(), logLevelText, tag, message);
+	
+	if (!EspUdp.sendUdpMessage(_ipAddress, _port, logMessage))
+	{
+		printf("!!!! ULT, Error in endPacket()!");
+		return;
+	}
+	else
+	{
+		//printf("!!!! ULT Sent Udp-Logmessage to %s:%d, Text: %s\n", _ipAddress, _port, logMessage); //No Logger else infinity loop
+	}
 }
 
-UdpLoggerTarget::UdpLoggerTarget(const char* name, int logLevel, IPAddress ip, int port)
-    :LoggerTarget(name, logLevel){
-	Serial.printf("*UT In UdpLoggerTarget Constructor with ip\n");
-	_ip = IPAddress(getBroadcastIp());
-	_port = 49155;
-	String ipAddressText = _ip.toString();
-	char ipAddressBuffer[100];
-	ipAddressText.toCharArray(ipAddressBuffer, 100);
-	Serial.printf("*UT Udp-TargetAddress: %s, Port: %d\n", ipAddressBuffer, _port);
-}
-
-void UdpLoggerTarget::log(const char* logLevelText, const char* tag, const char* message){
-    _udp.beginPacket(_ip, _port);
-	char logMessage[256];
-	const char* thingName = Thing.getName();
-	Serial.printf("*UT Thingname: %s\n", thingName);
-	sprintf(logMessage, "*LG: %s;%s;%s;%s\n", Thing.getName(), logLevelText,tag, message);
-	_udp.printf(logMessage);
-	_udp.endPacket();
-	Serial.print(logMessage);
+int UdpLoggerTarget::getPort()
+{
+	return _port;
 }

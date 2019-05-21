@@ -1,8 +1,8 @@
 #pragma once
 
 #include <list>
-#include <Actor.h>
-#include <Sensor.h>
+#include <IotSensor.h>
+#include <IotActor.h>
 
 
 /*
@@ -18,8 +18,7 @@ public:
 		Thing initialisieren (Sensorliste und Actorliste anlegen)
 		Callback für Aktualisierung anlegen
 	*/
-	void init(const char* name, bool json);
-	char* getName();
+	void init();
 
 	/*
 		Die Sensoren und Aktoren der Devices werden aktualisiert.
@@ -27,17 +26,16 @@ public:
 		aktuellen Werte neu gelesen.
 	*/
 	void refreshSensorsAndActors();
-	void addSensor(Sensor* sensor);
-	void addActor(Actor* actor);
-	Actor* getActorByName(char* name);
-	Sensor* getSensorByName(char* name);
-
+	void addSensor(IotSensor* sensor);
+	void addActor(IotActor* actor);
+	IotActor* getActorByName(char* name);
+	IotSensor* getSensorByName(char* name);
+	void getAllSensorName(char* names);
+	void getAllActorName(char* names);
 private:
-	// StaticJsonBuffer<200> _jsonBuffer;
 
-	std::list<Sensor*> _sensors;
-	std::list<Actor*> _actors;
-	char _thingName[80];
+	std::list<IotSensor*> _sensors;
+	std::list<IotActor*> _actors;
 
 	/*
 		Callbackroutine mit der sich der Thing beim CommandInterpreter für Befehle

@@ -1,4 +1,7 @@
 
+#include <stdio.h>
+#include <string.h>
+#include <esp_log.h>
 #include "Logger.h"
 
 /*
@@ -9,33 +12,47 @@
 	message: Logtext
 */
 
-void LoggerClass::init(const char* name) {
+// int espLogDelegate(const char *format, va_list arg){
+// 	char loggerMessage[300];
+// 	sprintf(loggerMessage, format, arg);
+// 	printf("---- %s\n", loggerMessage);
+// 	// printf("++++++++++++++++\n");
+// 	return 1;
+// }
+
+void LoggerClass::init(const char *name)
+{
 	strcpy(_name, name);
-	Serial.print(F("TH* Thing init with name: "));
-	Serial.println(_name);
+	printf("TH* Logger init with name: %s ", _name);
+	// esp_log_set_vprintf(&espLogDelegate);
+}
+void LoggerClass::verbose(const char *tag, const char *message)
+{
+	log(LOG_LEVEL_VERBOSE, tag, message);
 }
 
-void LoggerClass::info(const char* tag, const char* message) {
-	log(LOG_LEVEL_INFO, tag, message);
-}
-
-void LoggerClass::debug(const char* tag, const char* message) {
+void LoggerClass::debug(const char *tag, const char *message)
+{
 	log(LOG_LEVEL_DEBUG, tag, message);
 }
 
-void LoggerClass::exception(const char* tag, const char* message) {
-	log(LOG_LEVEL_EXCEPTION, tag, message);
+void LoggerClass::info(const char *tag, const char *message)
+{
+	log(LOG_LEVEL_INFO, tag, message);
 }
 
-void LoggerClass::error(const char* tag, const char* message) {
+void LoggerClass::warning(const char *tag, const char *message)
+{
+	log(LOG_LEVEL_WARNING, tag, message);
+}
+
+void LoggerClass::error(const char *tag, const char *message)
+{
 	log(LOG_LEVEL_ERROR, tag, message);
 }
 
-void LoggerClass::fatalerror(const char* tag, const char* message) {
-	log(LOG_LEVEL_FATALERROR, tag, message);
-}
-
-void LoggerClass::log(int logLevel, const char* tag, const char* message) {
+void LoggerClass::log(int logLevel, const char *tag, const char *message)
+{
 	for (std::list<LoggerTarget *>::iterator it = _logger.begin(); it != _logger.end(); ++it)
 	{
 		// Serial.print(F("*NO: refresh, Sensor: "));
@@ -43,22 +60,40 @@ void LoggerClass::log(int logLevel, const char* tag, const char* message) {
 		// Serial.print(F(", last Value: "));
 		// Serial.println(it->second->getLastMeasurement());
 		LoggerTarget *loggerTarget = *it;
-		if(logLevel >= loggerTarget -> getLogLevel()) {
+		if (logLevel >= loggerTarget->getLogLevel())
+		{
 			loggerTarget->log(_logLevelTexts[logLevel], tag, message);
 		}
 	}
 }
 
-void LoggerClass::addLoggerTarget(LoggerTarget* logger) {
-	_logger.push_back(logger);
+bool LoggerClass::addLoggerTarget(LoggerTarget *loggerTarget)
+{
+	char loggerMessage[LENGTH_LOGGER_MESSAGE];
+	if (getLoggerTarget(loggerTarget->getName()) != nullptr)
+	{
+		sprintf(loggerMessage, "Logger %s already exists!", loggerTarget->getName());
+		Logger.error("Logger;addLoggerTarget()", loggerMessage);
+		return false;
+	}
+	_logger.push_back(loggerTarget);
+	sprintf(loggerMessage, "LoggerTarget %s registered", loggerTarget->getName());
+	Logger.error("Logger;addLoggerTarget()", loggerMessage);
+	return true;
 }
 
-const char* LoggerClass::getLogLevelText(int logLevel){
+const char *LoggerClass::getLogLevelText(int logLevel)
+{
+	if (logLevel > 4)
+	{
+		return "?";
+	}
+
 	return _logLevelTexts[logLevel];
 }
 
-
-LoggerTarget* LoggerClass::getLoggerTarget(const char* name) {
+LoggerTarget *LoggerClass::getLoggerTarget(const char *name)
+{
 	for (std::list<LoggerTarget *>::iterator it = _logger.begin(); it != _logger.end(); ++it)
 	{
 		// Serial.print(F("*NO: refresh, Sensor: "));
@@ -66,108 +101,17 @@ LoggerTarget* LoggerClass::getLoggerTarget(const char* name) {
 		// Serial.print(F(", last Value: "));
 		// Serial.println(it->second->getLastMeasurement());
 		LoggerTarget *logger = *it;
-		if(strcmp(logger->getName(), name) == 0) {
+		if (strcmp(logger->getName(), name) == 0)
+		{
 			return logger;
 		}
 	}
 	return nullptr;
 }
 
-char * LoggerClass::getName() {
+char *LoggerClass::getName()
+{
 	return _name;
 }
+
 LoggerClass Logger;
-
-/*
-#include <MqttClient.h>
-#include <ThingTime.h>
-#include <WiFi.h>
-
-
-
-void LoggerClass::logFile(int type, const char* message){
-	if(SPIFFS.begin(true)) {
-		if(SPIFFS.exists("/log.txt")) {
-			File file = SPIFFS.open("/log.txt", FILE_APPEND);
-			if(file){
-  	  			Serial.println(F("File is opend"));
-				char logMessage[128];
-				sprintf(logMessage, "*LG: => [ %i ] => %s \n", type, message);
-				if(file.print(logMessage)){
-    			Serial.println("File content was written");
-					Serial.println(file.size());
-					if(file.size() > 5000){
-						newSave();
-					}
-  			} else {
-    			Serial.println("File append failed");
-  			}
-				file.close();
-			} else {
-				Serial.println(F("There was an error opening the file for writing"));
-			}
-		} else {
-			File file = SPIFFS.open("/log.txt", FILE_APPEND);
-			file.close();
-			logFile(type, message);
-		} 
-	} else {
-		Serial.println(F("An Error has occurred while mounting SPIFFS"));
-	}
-}
-
-void LoggerClass::logMqtt(const char* topic, int type, const char* message)
-{
-	char fullTopic[100] = "log/";
-	strcat(fullTopic, topic);
-	_jsonBuffer.clear();
-	JsonObject& logEntry = _jsonBuffer.createObject();
-	logEntry["type"] = type;
-	logEntry["time"] = ThingTime.getDateTime();
-	logEntry["message"] = message;
-	char jsonText[128];
-	logEntry.printTo(jsonText);
-	Serial.print(F("*LG: Topic: "));
-	Serial.print(fullTopic);
-	Serial.print(F(", Payload: "));
-	Serial.println(jsonText);
-	MqttClient.publish(fullTopic, jsonText);
-}
-
-void LoggerClass::logReadFile(){
-	if(SPIFFS.exists("/logLate.txt")){
-		File f = SPIFFS.open("/logLate.txt", FILE_READ);
-		while(f.available()){
-      Serial.print((char)f.read());
-    }
-		f.close();
-	}
-	if(SPIFFS.exists("/log.txt")){
-		File f = SPIFFS.open("/log.txt", FILE_READ);
-		while(f.available()){
-      Serial.print((char)f.read());
-    }
-		f.close();
-	}
-}
-
-void LoggerClass::newSave(){
-	if(SPIFFS.exists("/logLate.txt")){
-		SPIFFS.remove("/logLate.txt");
-	}
-	File file = SPIFFS.open("/logLate.txt", FILE_APPEND);
-	File fileToRead = SPIFFS.open("/log.txt", FILE_READ);
-  if(fileToRead){
-   	Serial.println(F("File Content:"));
-   	while(fileToRead.available()){
-			file.print((char)fileToRead.read());
-		}
-		file.close();
-		fileToRead.close();
-		SPIFFS.remove("/log.txt");
-  } else {
-		Serial.println(F("Failed to open file for reading"));
-	}
-	Serial.println(F("newSave Worked!!!"));
-}
-*/

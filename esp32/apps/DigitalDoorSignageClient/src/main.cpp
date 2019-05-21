@@ -1,11 +1,9 @@
 #include <stdlib.h>
 #include <string>
-#include <ThingConfig.h>
-#include <Thing.h>
-#include <HttpServer.h>
+#include <esp_http_server.h>
 
-#include "esp_http_client.h"
-#include "esp_log.h"
+#include <esp_http_client.h>
+#include <esp_log.h>
 
 #define TAG "HTTP CLIENT"
 
@@ -134,16 +132,16 @@ void http_rest_with_url()
 // 	subject = newSubject;
 // }
 
-static void handleRoomRequest()
-{
-	if (HttpServer.args() == 1)
-	{
-		room = HttpServer.arg(0).c_str();
-		ThingConfig.setValue("room", room.c_str());
-	}
+// static void handleRoomRequest()
+// {
+// 	if (HttpServer.args() == 1)
+// 	{
+// 		room = HttpServer.arg(0).c_str();
+// 		ThingConfig.setValue("room", room.c_str());
+// 	}
 
-	HttpServer.send(200, "text/plain", room.c_str());
-}
+// 	HttpServer.send(200, "text/plain", room.c_str());
+// }
 
 // void writeStaticDataToDisplay()
 // {
@@ -219,9 +217,5 @@ static void handleRoomRequest()
 
 
 void app_main(){
-    ThingConfig.readConfig();
-	HttpServer.init();
-	HttpServer.on("/room", handleRoomRequest);
-	room = ThingConfig.getValue("room");
 
 }

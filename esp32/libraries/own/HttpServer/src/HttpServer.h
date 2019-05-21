@@ -1,8 +1,9 @@
 #pragma once
 
 #include <esp_http_server.h>
+#include <WebServer.h>
 
-class HttpServerClass
+class HttpServerClass : WebServer
 {
     public:
         void init();

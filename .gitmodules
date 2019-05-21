@@ -1,3 +1,6 @@
 [submodule "esp32/apps/DigitalDoorSignageClient/esp32/apps/DigitalDoorSignageClient/lib/esp-idf"]
 	path = esp32/apps/DigitalDoorSignageClient/esp32/apps/DigitalDoorSignageClient/lib/esp-idf
 	url = git@github.com:espressif/esp-idf.git
+[submodule "lib/esp-idf"]
+	path = lib/esp-idf
+	url = git@github.com:espressif/esp-idf.git

@@ -4,6 +4,7 @@
 
 #include <esp_http_client.h>
 #include <esp_log.h>
+#include <Storage/Storage.h>
 
 #define TAG "HTTP CLIENT"
 
@@ -15,6 +16,7 @@ extern "C"
 // GxIO_Class io(SPI, /*CS=5*/ SS, /*DC=*/17, /*RST=*/16); // arbitrary selection of 17, 16
 // GxEPD_Class display(io, /*RST=*/16, /*BUSY=*/4);		// arbitrary selection of (16), 4
 std::string room;
+Storage storage;
 
 int calculateWidthOfText(std::string text)
 {

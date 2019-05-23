@@ -1,10 +1,6 @@
 #include <HttpClient/HttpClient.h>
 #define TAG "HTTP CLIENT"
 
-struct Response{
-    std::string body;
-};
-
 
 esp_err_t http_event_handler(esp_http_client_event_t *evt)
 {
@@ -25,7 +21,7 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt)
             ESP_LOGD(TAG, "HTTP_EVENT_ON_DATA, len=%d", evt->data_len);
             if (!esp_http_client_is_chunked_response(evt->client)) {
                 // Write out data
-                // printf("%.*s", evt->data_len, (char*)evt->data);
+                printf("%.*s", evt->data_len, (char*)evt->data);
             }
 
             break;
@@ -40,11 +36,10 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt)
 }
 
 
-char* HttpClient::get(std::string url){
-    esp_http_client_config_t config = {
-        .url = url.c_str(),
-        .event_handler = http_event_handler,
-    };
+void HttpClient::get(std::string url){
+    esp_http_client_config_t config;
+    config.url = url.c_str();
+    config.event_handler = http_event_handler;
     esp_http_client_handle_t client = esp_http_client_init(&config);
 
 

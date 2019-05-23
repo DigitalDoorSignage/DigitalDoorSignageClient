@@ -1,10 +1,12 @@
 #include <stdlib.h>
 #include <string>
-#include <esp_http_server.h>
 
-#include <esp_http_client.h>
-#include <esp_log.h>
+//util
 #include <Storage/Storage.h>
+//own
+#include <EspConfig.h>
+#include <EspStation.h>
+#include <HttpServer.h>
 
 #define TAG "HTTP CLIENT"
 
@@ -30,4 +32,13 @@ int calculateCenteredXOfText(std::string text, int width)
 
 void app_main()
 {
+    
+    EspConfig.init();
+    EspStation.init();
+    HttpServer.init();
+    while(1){
+        printf("test");
+    }
+    // HttpClient temp;
+    // temp.get("http://localhost:8080/webuntisclient-1.0-SNAPSHOT/api/state?room=E23");    
 }

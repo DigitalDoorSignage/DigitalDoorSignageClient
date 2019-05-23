@@ -10,5 +10,5 @@ struct Response{
 class HttpClient{
     private:
     public:
-    char* get(std::string url);
+    void get(std::string url);
 };

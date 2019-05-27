@@ -1,12 +1,22 @@
+#include <stdio.h>
+#include "esp_system.h"
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include <esp_log.h>
+
 #include <stdlib.h>
 #include <string>
 
 //util
 #include <Storage/Storage.h>
+#include <HttpClient/HttpClient.h>
 //own
 #include <EspConfig.h>
 #include <EspStation.h>
 #include <HttpServer.h>
+#include <EspWifiManager.h>
+#include <EspAp.h>
+
 
 #define TAG "HTTP CLIENT"
 
@@ -30,15 +40,29 @@ int calculateCenteredXOfText(std::string text, int width)
     return (width - calculateWidthOfText(text)) / 2;
 }
 
-void app_main()
-{
-    
+void main_task(void *param){
+    printf("start\n");
+    fflush(stdout);
     EspConfig.init();
+    //EspAp.init();
     EspStation.init();
     HttpServer.init();
+
+    HttpClient temp;
+    temp.get("http://localhost:8080/webuntisclient-1.0-SNAPSHOT/api/state?room=E23"); 
+    
+
     while(1){
-        printf("test");
+        vTaskDelay(10);
+        // printf("loop");
+        // HttpClient temp;
+        // temp.get("http://localhost:8080/webuntisclient-1.0-SNAPSHOT/api/state?room=E23"); 
+        // printf("test\n");
+        // fflush(stdout);
     }
-    // HttpClient temp;
-    // temp.get("http://localhost:8080/webuntisclient-1.0-SNAPSHOT/api/state?room=E23");    
+}
+
+void app_main()
+{
+    xTaskCreate(&main_task, "main_task", 4096, NULL, 5, NULL);
 }

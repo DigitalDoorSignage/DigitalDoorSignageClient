@@ -1,5 +1,8 @@
 #include <HttpClient/HttpClient.h>
+
+
 #define TAG "HTTP CLIENT"
+
 
 
 esp_err_t http_event_handler(esp_http_client_event_t *evt)
@@ -36,12 +39,15 @@ esp_err_t http_event_handler(esp_http_client_event_t *evt)
 }
 
 
-void HttpClient::get(std::string url){
-    esp_http_client_config_t config;
-    config.url = url.c_str();
+void HttpClient::get(const char* url){
+    ESP_LOGI(TAG, "start get");
+    esp_http_client_config_t config = {};
+    config.url = url;
     config.event_handler = http_event_handler;
-    esp_http_client_handle_t client = esp_http_client_init(&config);
 
+    ESP_LOGI(TAG, "before initg et");
+    esp_http_client_handle_t client = esp_http_client_init(&config);
+    ESP_LOGI(TAG, "after init get");
 
     esp_err_t err = esp_http_client_perform(client);
     if (err == ESP_OK) {

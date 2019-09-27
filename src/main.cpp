@@ -17,6 +17,15 @@
 #include <EspWifiManager.h>
 #include <EspAp.h>
 
+#include <GxEPD.h>
+#include <GxGDEW042T2/GxGDEW042T2.h>
+#include <Fonts/FreeMonoBold9pt7b.h>
+#include <Fonts/FreeMonoBold12pt7b.h>
+#include <Fonts/FreeMonoBold18pt7b.h>
+#include <Fonts/FreeMonoBold24pt7b.h>
+#include <GxIO/GxIO_SPI/GxIO_SPI.h>
+#include <GxIO/GxIO.h>
+
 
 #define TAG "HTTP CLIENT"
 
@@ -27,15 +36,56 @@ extern "C"
 
 // GxIO_Class io(SPI, /*CS=5*/ SS, /*DC=*/17, /*RST=*/16); // arbitrary selection of 17, 16
 // GxEPD_Class display(io, /*RST=*/16, /*BUSY=*/4);		// arbitrary selection of (16), 4
-std::string room;
+char* room;
 Storage storage;
 
-int calculateWidthOfText(std::string text)
+static void writeLessonToDisplay(char* newClass, char* newTeacher, char* newSubject)
 {
-    return text.length() * 21 - 3;
+	int x, y = 0;
+	boolean classChanged = klass.compare(newClass) != 0;
+	boolean teacherChanged = teacher.compare(newTeacher) != 0;
+	boolean subjectChanged = subject.compare(newSubject) != 0;
+
+	if (classChanged || teacherChanged || subjectChanged)
+	{
+		display.fillScreen(GxEPD_WHITE);
+	}
+	// top left text
+	if (classChanged)
+	{
+		x = 5 + calculateCenteredXOfText(newClass, 240);
+		y = 63;
+		display.setCursor(x, y);
+		display.print(newClass);
+		display.updateWindow(8, 6, 230, 95, false);
+	}
+	// middle text
+	if (teacherChanged)
+	{
+		x = 5 + calculateCenteredXOfText(newTeacher, 390);
+		y = 160;
+		display.setCursor(x, y);
+		display.print(newTeacher);
+		display.updateWindow(8, 102, 385, 95, false);
+	}
+	// bottom text
+	if (subjectChanged)
+	{
+		x = 5 + calculateCenteredXOfText(newSubject, 390);
+		y = 257;
+		display.setCursor(x, y);
+		display.print(newSubject);
+		display.updateWindow(8, 198, 385, 95, false);
+	}
 }
 
-int calculateCenteredXOfText(std::string text, int width)
+
+int calculateWidthOfText(char* text)
+{
+    return strlen(text) * 21 - 3;
+}
+
+int calculateCenteredXOfText(char* text, int width)
 {
     return (width - calculateWidthOfText(text)) / 2;
 }

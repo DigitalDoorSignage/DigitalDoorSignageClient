@@ -1,0 +1,52 @@
+{
+    "name": "GxEPD", 
+    "version": "3.0.8", 
+    "keywords": [
+        "display"
+    ], 
+    "description": "Display Library for SPI e-paper panels from Dalian Good Display and boards from Waveshare.", 
+    "frameworks": [
+        "arduino"
+    ], 
+    "platforms": [
+        "atmelavr", 
+        "atmelsam", 
+        "espressif32", 
+        "espressif8266", 
+        "infineonxmc", 
+        "intel_arc32", 
+        "kendryte210", 
+        "microchippic32", 
+        "nordicnrf51", 
+        "nordicnrf52", 
+        "ststm32", 
+        "ststm8", 
+        "teensy", 
+        "timsp430"
+    ], 
+    "authors": [
+        {
+            "email": null, 
+            "url": null, 
+            "maintainer": true, 
+            "name": "Jean-Marc Zingg"
+        }
+    ], 
+    "repository": {
+        "type": "git", 
+        "url": "https://github.com/ZinggJM/GxEPD"
+    }, 
+    "homepage": null, 
+    "export": {
+        "include": null, 
+        "exclude": [
+            "extras", 
+            "docs", 
+            "tests", 
+            "test", 
+            "*.doxyfile", 
+            "*.pdf"
+        ]
+    }, 
+    "id": 2951
+}

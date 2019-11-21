@@ -13,8 +13,8 @@
 #include <GxIO/GxIO_SPI/GxIO_SPI.h>
 #include <GxIO/GxIO.h>
 
-#include <Bridge.h>
-#include <HttpClient.h>
+#include <HTTPClient.h>
+
 
 GxIO_Class io(SPI, /*CS=5*/ SS, /*DC=*/17, /*RST=*/16); // arbitrary selection of 17, 16
 GxEPD_Class display(io, /*RST=*/16, /*BUSY=*/4);		// arbitrary selection of (16), 4
@@ -23,6 +23,7 @@ std::string room;
 std::string teacher;
 std::string subject;
 std::string klass;
+std::string version;
 char topic[30] = "room/";
 
 int calculateWidthOfText(std::string text)
@@ -75,7 +76,7 @@ static void writeLessonToDisplay(std::string newClass, std::string newTeacher, s
 	}
 }
 
-static void callback(const char *topic, const char *payload)
+static void callback(const char *payload)
 {
 	DynamicJsonBuffer jsonBuffer;
 	JsonObject &root = jsonBuffer.parseObject(payload);
@@ -125,47 +126,65 @@ void setupDisplay()
 	display.update();
 }
 
-// void setupMqtt()
-// {
-// 	MqttClient.init("/");
-// 	room = ThingConfig.getValue("room");
-// 	strcat(topic, room.c_str());
-// 	sub.topic = topic;
-// 	sub.subscriberCallback = callback;
-// 	MqttClient.addSubscription(&sub);
-// 	MqttClient.subscribeToBroker();
-// }
-
 void setup()
 {
-	//Bridge.begin();
-	Serial.begin(9600); //Initialisierung der seriellen Schnittstelle
+	Serial.begin(115200); //Initialisierung der seriellen Schnittstelle
 	while(!Serial);
 	ThingConfig.readConfig();
 	HttpServer.init();
 	HttpServer.on("/room", handleRoomRequest);
 	room = ThingConfig.getValue("room");
-	// setupMqtt();
 	setupDisplay();
 	writeStaticDataToDisplay();
-
-	HttpClient client;
-	printf("test2\n");
-  	client.get("https://www.google.com/");
-	
-	while (client.available()) {
-		char c = client.read();
-		Serial.print(c);
-	}
-	Serial.flush();
-
-	delay(5000);
 }
 
 void loop()
 {
 	HttpServer.handleClient();
+
+	HTTPClient httpUpdated;
+	HTTPClient httpData;
 	
-	// MqttClient.doLoop();
-	//delay(1);
+	httpUpdated.begin(strcat("http://192.168.43.228/api/updatedAt?room=", room.c_str())); //HTTP
+	Serial.print("[HTTP] GET...Version\n");
+	// start connection and send HTTP header
+	int httpCode = httpUpdated.GET();
+
+	// httpCode will be negative on error
+	if(httpCode > 0) {
+		// HTTP header has been send and Server response header has been handled
+		Serial.printf("[HTTP] GET...Version code: %d\n", httpCode);
+
+		// file found at server
+		if(httpCode == HTTP_CODE_OK) {
+			String payload = httpUpdated.getString();
+			if(version.compare(payload.c_str()) != 0){
+				strcpy((char*)version.c_str(), payload.c_str());
+				
+				httpData.begin(strcat("http://192.168.43.228/api/state?room=", room.c_str()));
+				Serial.print("[HTTP] GET...Data\n");
+				// start connection and send HTTP header
+				int httpCodeData = httpData.GET();
+
+				// httpCode will be negative on error
+				if(httpCodeData > 0) {
+					// HTTP header has been send and Server response header has been handled
+					Serial.printf("[HTTP] GET...Data code: %d\n", httpCodeData);
+
+					// file found at server
+					if(httpCodeData == HTTP_CODE_OK) {
+						String payload = httpData.getString();
+						callback(payload.c_str());
+					}
+				} else {
+					Serial.printf("[HTTP] GET...Data failed, error: %s\n", httpData.errorToString(httpCodeData).c_str());
+				}
+
+				httpData.end();
+			}
+		}
+	} else {
+		Serial.printf("[HTTP] GET...Version failed, error: %s\n", httpUpdated.errorToString(httpCode).c_str());
+	}
+	httpUpdated.end();
 }

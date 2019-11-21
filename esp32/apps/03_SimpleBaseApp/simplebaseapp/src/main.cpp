@@ -13,6 +13,9 @@
 #include <GxIO/GxIO_SPI/GxIO_SPI.h>
 #include <GxIO/GxIO.h>
 
+#include <Bridge.h>
+#include <HttpClient.h>
+
 GxIO_Class io(SPI, /*CS=5*/ SS, /*DC=*/17, /*RST=*/16); // arbitrary selection of 17, 16
 GxEPD_Class display(io, /*RST=*/16, /*BUSY=*/4);		// arbitrary selection of (16), 4
 MqttSubscription sub = MqttSubscription();
@@ -122,32 +125,47 @@ void setupDisplay()
 	display.update();
 }
 
-void setupMqtt()
-{
-	MqttClient.init("/");
-	room = ThingConfig.getValue("room");
-	strcat(topic, room.c_str());
-	sub.topic = topic;
-	sub.subscriberCallback = callback;
-	MqttClient.addSubscription(&sub);
-	MqttClient.subscribeToBroker();
-}
+// void setupMqtt()
+// {
+// 	MqttClient.init("/");
+// 	room = ThingConfig.getValue("room");
+// 	strcat(topic, room.c_str());
+// 	sub.topic = topic;
+// 	sub.subscriberCallback = callback;
+// 	MqttClient.addSubscription(&sub);
+// 	MqttClient.subscribeToBroker();
+// }
 
 void setup()
 {
-	Serial.begin(115200); //Initialisierung der seriellen Schnittstelle
+	//Bridge.begin();
+	Serial.begin(9600); //Initialisierung der seriellen Schnittstelle
+	while(!Serial);
 	ThingConfig.readConfig();
 	HttpServer.init();
 	HttpServer.on("/room", handleRoomRequest);
 	room = ThingConfig.getValue("room");
-	setupMqtt();
+	// setupMqtt();
 	setupDisplay();
 	writeStaticDataToDisplay();
+
+	HttpClient client;
+	printf("test2\n");
+  	client.get("https://www.google.com/");
+	
+	while (client.available()) {
+		char c = client.read();
+		Serial.print(c);
+	}
+	Serial.flush();
+
+	delay(5000);
 }
 
 void loop()
 {
 	HttpServer.handleClient();
-	MqttClient.doLoop();
+	
+	// MqttClient.doLoop();
 	//delay(1);
 }

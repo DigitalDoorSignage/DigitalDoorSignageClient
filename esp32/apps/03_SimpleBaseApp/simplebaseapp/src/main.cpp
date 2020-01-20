@@ -78,6 +78,7 @@ static void writeLessonToDisplay(std::string newClass, std::string newTeacher, s
 
 static void callback(const char *payload)
 {
+	printf("in callback payload: %s\n", payload);
 	DynamicJsonBuffer jsonBuffer;
 	JsonObject &root = jsonBuffer.parseObject(payload);
 	std::string newTeacher = root["teacher"].as<String>().c_str();
@@ -140,51 +141,58 @@ void setup()
 
 void loop()
 {
+	//printf("start\n");
 	HttpServer.handleClient();
-
+	//printf("after httpServer.handleClient\n");
 	HTTPClient httpUpdated;
 	HTTPClient httpData;
-	
-	httpUpdated.begin(strcat("http://192.168.43.228/api/updatedAt?room=", room.c_str())); //HTTP
-	Serial.print("[HTTP] GET...Version\n");
-	// start connection and send HTTP header
-	int httpCode = httpUpdated.GET();
+	// printf(room.c_str());
+	// printf("after room.c_str()\n");
+	if(!room.empty()){
+		std::string updatedUrl = "http://10.42.0.1:8080/webuntisclient-1.0-SNAPSHOT/api/updatedAt?room=" + room;
+		std::string stateUrl = "http://10.42.0.1:8080/webuntisclient-1.0-SNAPSHOT/api/state?room=" + room;
+		httpUpdated.begin(updatedUrl.c_str()); //HTTP
+		Serial.print("[HTTP] GET...Version\n");
+		// start connection and send HTTP header
+		int httpCode = httpUpdated.GET();
 
-	// httpCode will be negative on error
-	if(httpCode > 0) {
-		// HTTP header has been send and Server response header has been handled
-		Serial.printf("[HTTP] GET...Version code: %d\n", httpCode);
+		// httpCode will be negative on error
+		if(httpCode > 0) {
+			// HTTP header has been send and Server response header has been handled
+			Serial.printf("[HTTP] GET...Version code: %d\n", httpCode);
 
-		// file found at server
-		if(httpCode == HTTP_CODE_OK) {
-			String payload = httpUpdated.getString();
-			if(version.compare(payload.c_str()) != 0){
-				strcpy((char*)version.c_str(), payload.c_str());
-				
-				httpData.begin(strcat("http://192.168.43.228/api/state?room=", room.c_str()));
-				Serial.print("[HTTP] GET...Data\n");
-				// start connection and send HTTP header
-				int httpCodeData = httpData.GET();
+			// file found at server
+			if(httpCode == HTTP_CODE_OK) {
+				String payload = httpUpdated.getString();
+				if(version.compare(payload.c_str()) != 0){
+					strcpy((char*)version.c_str(), payload.c_str());
+					
+					httpData.begin(stateUrl.c_str());
+					Serial.print("[HTTP] GET...Data\n");
+					// start connection and send HTTP header
+					int httpCodeData = httpData.GET();
 
-				// httpCode will be negative on error
-				if(httpCodeData > 0) {
-					// HTTP header has been send and Server response header has been handled
-					Serial.printf("[HTTP] GET...Data code: %d\n", httpCodeData);
+					// httpCode will be negative on error
+					if(httpCodeData > 0) {
+						// HTTP header has been send and Server response header has been handled
+						Serial.printf("[HTTP] GET...Data code: %d\n", httpCodeData);
 
-					// file found at server
-					if(httpCodeData == HTTP_CODE_OK) {
-						String payload = httpData.getString();
-						callback(payload.c_str());
+						// file found at server
+						if(httpCodeData == HTTP_CODE_OK) {
+							String payload = httpData.getString();
+							callback(payload.c_str());
+						}
+					} else {
+						Serial.printf("[HTTP] GET...Data failed, error: %s\n", httpData.errorToString(httpCodeData).c_str());
 					}
-				} else {
-					Serial.printf("[HTTP] GET...Data failed, error: %s\n", httpData.errorToString(httpCodeData).c_str());
-				}
 
-				httpData.end();
+					httpData.end();
+				}
 			}
+		} else {
+			Serial.printf("[HTTP] GET...Version failed, error: %s\n", httpUpdated.errorToString(httpCode).c_str());
 		}
-	} else {
-		Serial.printf("[HTTP] GET...Version failed, error: %s\n", httpUpdated.errorToString(httpCode).c_str());
+		httpUpdated.end();
 	}
-	httpUpdated.end();
+	delay(100);
 }

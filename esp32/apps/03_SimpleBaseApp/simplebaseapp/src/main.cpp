@@ -81,24 +81,40 @@ static void callback(const char *payload)
 	printf("in callback payload: %s\n", payload);
 	DynamicJsonBuffer jsonBuffer;
 	JsonObject &root = jsonBuffer.parseObject(payload);
-	std::string newTeacher = root["teacher"].as<String>().c_str();
-	std::string newClass = root["class"].as<String>().c_str();
-	std::string newSubject = root["subject"].as<String>().c_str();
-	writeLessonToDisplay(newClass, newTeacher, newSubject);
+	std::string newTeacher;
+	//std::string newTeacher = root["teachers"][0]["shortName"].as<String>().c_str();
+	JsonArray& array = root["teachers"].as<JsonArray>();
+	int count = 0;
+	for(JsonVariant v : array) {
+		if(count == 0){
+			newTeacher = v["shortName"].as<String>().c_str();
+		}
+		else
+		{
+			newTeacher = newTeacher + ", " + v["shortName"].as<String>().c_str();
+		}
+		count++;
+	}
+	std::string newClass = root["klass"]["name"].as<String>().c_str();
+	std::string newSubject = root["subject"]["name"].as<String>().c_str();
+	if(newClass.empty()){
+		writeLessonToDisplay("-", "-", "-");
+	}
+	else{
+		writeLessonToDisplay(newClass, newTeacher, newSubject);
+	}
 	teacher = newTeacher;
 	klass = newClass;
 	subject = newSubject;
 }
 
-static void handleRoomRequest()
-{
-	if (HttpServer.args() == 1)
-	{
-		room = HttpServer.arg(0).c_str();
-		ThingConfig.setValue("room", room.c_str());
-	}
+void writeRoomToDisplay(){
 
-	HttpServer.send(200, "text/plain", room.c_str());
+	// top right text
+	display.setCursor(245 + calculateCenteredXOfText(room, 151), 63);
+	display.print(room.c_str());
+	
+	display.updateWindow(249, 8, 130, 56, false);
 }
 
 void writeStaticDataToDisplay()
@@ -111,11 +127,23 @@ void writeStaticDataToDisplay()
 	display.drawRect(5, 101, 390, 97, GxEPD_BLACK);
 	// bottom
 	display.drawRect(5, 197, 390, 97, GxEPD_BLACK);
-	// top right text
-	display.setCursor(245 + calculateCenteredXOfText(room, 151), 63);
-	display.print(room.c_str());
+
 	display.updateWindow(0, 0, GxEPD_WIDTH, GxEPD_HEIGHT, false);
+	writeRoomToDisplay();
 	writeLessonToDisplay("-", "-", "-");
+}
+
+static void handleRoomRequest()
+{
+	if (HttpServer.args() == 1)
+	{
+		room = HttpServer.arg(0).c_str();
+		ThingConfig.setValue("room", room.c_str());
+		//writeStaticDataToDisplay();
+		writeRoomToDisplay();
+	}
+
+	HttpServer.send(200, "text/plain", room.c_str());
 }
 
 void setupDisplay()
@@ -164,7 +192,9 @@ void loop()
 			// file found at server
 			if(httpCode == HTTP_CODE_OK) {
 				String payload = httpUpdated.getString();
-				if(version.compare(payload.c_str()) != 0){
+				printf("version: %s payload: %s\n", version.c_str(), payload.c_str());
+				if(!payload.equals(version.c_str())){
+					printf("in if now\n");
 					strcpy((char*)version.c_str(), payload.c_str());
 					
 					httpData.begin(stateUrl.c_str());
@@ -193,6 +223,7 @@ void loop()
 			Serial.printf("[HTTP] GET...Version failed, error: %s\n", httpUpdated.errorToString(httpCode).c_str());
 		}
 		httpUpdated.end();
+		delay(5000);
 	}
-	delay(100);
+		//one round every minute
 }

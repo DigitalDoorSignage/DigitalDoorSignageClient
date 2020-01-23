@@ -51,11 +51,11 @@ static void writeLessonToDisplay(std::string newClass, std::string newTeacher, s
 	// top left text
 	if (classChanged)
 	{
-		x = 5 + calculateCenteredXOfText(newClass, 240);
+		x = 5 + calculateCenteredXOfText(newClass, 200);
 		y = 63;
 		display.setCursor(x, y);
 		display.print(newClass.c_str());
-		display.updateWindow(8, 6, 230, 95, false);
+		display.updateWindow(8, 6, 180, 95, false);
 	}
 	// middle text
 	if (teacherChanged)
@@ -116,31 +116,31 @@ void writeRoomToDisplay(){
 		int spaceIndex = room.find(" ");
 		std::string partOne = room.substr(0, spaceIndex);
 
-		display.setCursor(245 + calculateCenteredXOfText(partOne, 151), 43);
+		display.setCursor(205 + calculateCenteredXOfText(partOne, 185), 43);
 
 		display.print(partOne.c_str());
 
 		std::string partTwo = room.substr(spaceIndex, room.length());
 
-		display.setCursor(245 + calculateCenteredXOfText(partTwo, 151), 73);
+		display.setCursor(205 + calculateCenteredXOfText(partTwo, 175), 73);
 
 		display.print(partTwo.c_str());
 	}
 	else
 	{
-		display.setCursor(245 + calculateCenteredXOfText(room, 151), 63);
+		display.setCursor(205 + calculateCenteredXOfText(room, 175), 63);
 		display.print(room.c_str());
 	}
 	
-	display.updateWindow(249, 8, 130, 86, false);
+	display.updateWindow(209, 8, 170, 86, false);
 }
 
 void writeStaticDataToDisplay()
 {
 	// top left
-	display.drawRect(5, 5, 240, 97, GxEPD_BLACK);
+	display.drawRect(5, 5, 200, 97, GxEPD_BLACK);
 	// top right
-	display.drawRect(244, 5, 151, 97, GxEPD_BLACK);
+	display.drawRect(204, 5, 191, 97, GxEPD_BLACK);
 	// middle
 	display.drawRect(5, 101, 390, 97, GxEPD_BLACK);
 	// bottom

@@ -20,6 +20,7 @@ GxIO_Class io(SPI, /*CS=5*/ SS, /*DC=*/17, /*RST=*/16); // arbitrary selection o
 GxEPD_Class display(io, /*RST=*/16, /*BUSY=*/4);		// arbitrary selection of (16), 4
 MqttSubscription sub = MqttSubscription();
 std::string room;
+std::string encodedRoom;
 std::string teacher;
 std::string subject;
 std::string klass;
@@ -111,10 +112,27 @@ static void callback(const char *payload)
 void writeRoomToDisplay(){
 
 	// top right text
-	display.setCursor(245 + calculateCenteredXOfText(room, 151), 63);
-	display.print(room.c_str());
+	if(room.find(" ") != std::string::npos){
+		int spaceIndex = room.find(" ");
+		std::string partOne = room.substr(0, spaceIndex);
+
+		display.setCursor(245 + calculateCenteredXOfText(partOne, 151), 43);
+
+		display.print(partOne.c_str());
+
+		std::string partTwo = room.substr(spaceIndex, room.length());
+
+		display.setCursor(245 + calculateCenteredXOfText(partTwo, 151), 73);
+
+		display.print(partTwo.c_str());
+	}
+	else
+	{
+		display.setCursor(245 + calculateCenteredXOfText(room, 151), 63);
+		display.print(room.c_str());
+	}
 	
-	display.updateWindow(249, 8, 130, 56, false);
+	display.updateWindow(249, 8, 130, 86, false);
 }
 
 void writeStaticDataToDisplay()
@@ -138,6 +156,12 @@ static void handleRoomRequest()
 	if (HttpServer.args() == 1)
 	{
 		room = HttpServer.arg(0).c_str();
+		encodedRoom = room.c_str();
+
+		if(room.find(" ") != std::string::npos){
+			encodedRoom.replace(encodedRoom.find(" "), sizeof(" ")-1, "%20");
+		}
+		
 		ThingConfig.setValue("room", room.c_str());
 		//writeStaticDataToDisplay();
 		writeRoomToDisplay();
@@ -163,6 +187,13 @@ void setup()
 	HttpServer.init();
 	HttpServer.on("/room", handleRoomRequest);
 	room = ThingConfig.getValue("room");
+	printf("before c_str()\n");
+	encodedRoom = room.c_str();
+	printf("after c_str()\n");
+	if(room.find(" ") != std::string::npos){
+		encodedRoom.replace(encodedRoom.find(" "), sizeof(" ")-1, "%20");
+		printf("after replace\n");
+	}
 	setupDisplay();
 	writeStaticDataToDisplay();
 }
@@ -177,10 +208,10 @@ void loop()
 	// printf(room.c_str());
 	// printf("after room.c_str()\n");
 	if(!room.empty()){
-		std::string updatedUrl = "http://10.42.0.1:8080/webuntisclient-1.0-SNAPSHOT/api/updatedAt?room=" + room;
-		std::string stateUrl = "http://10.42.0.1:8080/webuntisclient-1.0-SNAPSHOT/api/state?room=" + room;
+		std::string updatedUrl = "http://10.42.0.1:8080/webuntisclient-1.0-SNAPSHOT/api/updatedAt?room=" + encodedRoom;
+		std::string stateUrl = "http://10.42.0.1:8080/webuntisclient-1.0-SNAPSHOT/api/state?room=" + encodedRoom;
 		httpUpdated.begin(updatedUrl.c_str()); //HTTP
-		Serial.print("[HTTP] GET...Version\n");
+		printf("[HTTP] GET %s\n", updatedUrl.c_str());
 		// start connection and send HTTP header
 		int httpCode = httpUpdated.GET();
 
@@ -198,7 +229,7 @@ void loop()
 					strcpy((char*)version.c_str(), payload.c_str());
 					
 					httpData.begin(stateUrl.c_str());
-					Serial.print("[HTTP] GET...Data\n");
+					printf("[HTTP] GET %s\n", stateUrl.c_str());
 					// start connection and send HTTP header
 					int httpCodeData = httpData.GET();
 

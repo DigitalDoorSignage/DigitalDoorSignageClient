@@ -14,5 +14,7 @@ These instructions will get you a copy of the project up and running on your loc
   * DIN -> MOSI(23)
   * GND -> GND
   * 3.3V -> 3.3V
+## Use Case
+![alt text](images/usecase.png)
 ## Acknowledgments
 [Herr Professor Köck](https://github.com/gkoe)
